@@ -1,0 +1,7 @@
+node_modules/
+dist/
+upstream/
+artifacts/
+*.log
+vendor/cloudflared.exe
+publish*.ps1

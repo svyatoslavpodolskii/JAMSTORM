@@ -1,0 +1,52 @@
+{
+  "name": "jamstorm",
+  "version": "0.2.0",
+  "private": true,
+  "license": "MIT",
+  "author": "JAMSTORM contributors",
+  "description": "YouTube Music desktop companion for Android Jam-Layer",
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "node scripts/run.cjs",
+    "test": "node --test test/*.test.cjs",
+    "check": "node scripts/check.cjs",
+    "build": "node scripts/notices.cjs && electron-builder --dir --win --x64 --config.electronDist=node_modules/electron/dist && node scripts/pack.cjs",
+    "tunnel:fetch": "node scripts/fetch-tunnel.cjs",
+    "build:dir": "electron-builder --dir --win --x64",
+    "smoke": "node scripts/run.cjs --smoke-test",
+    "smoke:live": "node scripts/run.cjs --live-smoke-test"
+  },
+  "devDependencies": {
+    "electron": "45.4.1",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "local.jam.desktop",
+    "productName": "JAMSTORM",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "LICENSE",
+      "THIRD_PARTY_NOTICES.md",
+      "package.json"
+    ],
+    "extraResources": [{ "from": "vendor", "to": "vendor", "filter": ["cloudflared.exe", "cloudflared-LICENSE.txt"] }],
+    "win": {
+      "target": "portable",
+      "signExecutable": false,
+      "icon": "assets/icon.ico"
+    },
+    "portable": {
+      "useZip": true,
+      "unicode": true,
+      "artifactName": "Jam-Desktop-${version}-portable.exe"
+    }
+  },
+  "dependencies": {
+    "@ghostery/adblocker": "2.20.3",
+    "qrcode": "^1.5.4"
+  }
+}
