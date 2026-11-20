@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('jam', {
-  queue:()=>ipcRenderer.invoke('app:queue'),lyrics:track=>ipcRenderer.invoke('app:lyrics',track),panel:value=>ipcRenderer.invoke('app:panel',value),
+  panels:()=>ipcRenderer.invoke('app:panels'),queue:()=>ipcRenderer.invoke('app:queue'),lyrics:track=>ipcRenderer.invoke('app:lyrics',track),panel:value=>ipcRenderer.invoke('app:panel',value),
   onFullscreen:callback=>{ipcRenderer.on('app:fullscreen',(_e,value)=>callback(value));},
   onPanel:callback=>{ipcRenderer.on('app:panel',(_e,value)=>callback(value));},
   addons: () => ipcRenderer.invoke('addons:state'),

@@ -16,23 +16,26 @@ const musicSmoke = process.argv.includes('--music-mode');
 const smoke = process.argv.includes('--smoke-test') || liveSmoke;
 if (smoke) app.setPath('userData', path.join(app.getPath('temp'), 'jam-desktop-smoke'));
 if (smoke && !liveSmoke) app.disableHardwareAcceleration();
-let window, music, side, player, jam, room, tunnel, addons, panel=null, selectedTab = 'music', mode = 'music';
+let window, music, side, lyricSide, player, jam, room, tunnel, addons, panel={queue:true,lyrics:true}, selectedTab = 'music', mode = 'music';
 const tvUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Cobalt/27.lts.3.1040976-gold (unlike Gecko) v8/13.8.258.54-jit gles Starboard/18, JamDesktop_DESKTOP_x8664_2026/0.2.0 (JamDesktop, Windows) local.jam.desktop/0.2.0';
 const home = () => mode === 'tv' ? 'https://www.youtube.com/tv' : 'https://music.youtube.com';
 const isLocalPage = require('./local-page.cjs').localPageGuard(path.join(__dirname, 'ui/index.html'));
-const isSidePage=require('./local-page.cjs').localPageGuard(path.join(__dirname,'ui/side.html'));
+const sideGuards=['side.html','side-lyrics.html'].map(name=>require('./local-page.cjs').localPageGuard(path.join(__dirname,'ui',name)));
+const isSidePage=url=>sideGuards.some(check=>check(url));
 const remoteAllowed = value => { try { const u = new URL(value); return u.protocol === 'https:' && (['music.youtube.com', 'accounts.google.com', 'consent.youtube.com', 'consent.google.com'].includes(u.hostname) || u.hostname === 'www.youtube.com' && (u.pathname === '/tv' || u.pathname.startsWith('/tv/'))); } catch { return false; } };
 function layout() {
   if (!window || !music) return;
   const [width, height] = window.getContentSize(),top=window.isFullScreen()?0:72; music.setBounds({ x: 0, y: top, width, height: Math.max(0, height - top) });
   music.setVisible(selectedTab === 'music');
-  if(side){side.setBounds({x:Math.max(0,width-372),y:top+16,width:356,height:Math.max(0,height-top-32)});side.setVisible(selectedTab==='music'&&!!panel);}
+  const gap=16,panelWidth=Math.min(340,Math.floor((width-340)/2)-gap),panelTop=top+80,panelHeight=Math.max(160,height-panelTop-104);
+  if(side){side.setBounds({x:width-panelWidth-gap,y:panelTop,width:panelWidth,height:panelHeight});side.setVisible(selectedTab==='music'&&panel.queue);}
+  if(lyricSide){lyricSide.setBounds({x:gap,y:panelTop,width:panelWidth,height:panelHeight});lyricSide.setVisible(selectedTab==='music'&&panel.lyrics);}
   if (selectedTab === 'music') music.webContents.focus();
 }
-function send(channel, value) { if (window && !window.isDestroyed()) window.webContents.send(channel, value);if(side&&!side.webContents.isDestroyed())side.webContents.send(channel,value); }
+function send(channel, value) { if (window && !window.isDestroyed()) window.webContents.send(channel, value);for(const view of [side,lyricSide])if(view&&!view.webContents.isDestroyed())view.webContents.send(channel,value); }
 function guard(event) {
   if(!window||window.isDestroyed())throw new Error('Application closing');
-  const local=event.sender===window.webContents&&isLocalPage(event.senderFrame.url),overlay=side&&event.sender===side.webContents&&isSidePage(event.senderFrame.url);
+  const local=event.sender===window.webContents&&isLocalPage(event.senderFrame.url),overlay=[side,lyricSide].some(view=>view&&event.sender===view.webContents&&isSidePage(event.senderFrame.url));
   if ((!local&&!overlay)||event.senderFrame!==event.sender.mainFrame) throw new Error('Forbidden sender');
 }
 app.whenReady().then(async () => {
@@ -83,9 +86,11 @@ app.whenReady().then(async () => {
   window.contentView.addChildView(music);
   side=new WebContentsView({webPreferences:{...prefs,preload:path.join(__dirname,'preload.cjs')}});side.setBackgroundColor('#00000000');window.contentView.addChildView(side);
   side.webContents.setWindowOpenHandler(()=>({action:'deny'}));side.webContents.on('will-navigate',(e,url)=>{if(!isSidePage(url))e.preventDefault();});
+  lyricSide=new WebContentsView({webPreferences:{...prefs,preload:path.join(__dirname,'preload.cjs')}});lyricSide.setBackgroundColor('#00000000');window.contentView.addChildView(lyricSide);
+  lyricSide.webContents.setWindowOpenHandler(()=>({action:'deny'}));lyricSide.webContents.on('will-navigate',(e,url)=>{if(!isSidePage(url))e.preventDefault();});
   const fullscreen=()=>{layout();send('app:fullscreen',window.isFullScreen());};
   window.on('enter-full-screen',fullscreen);window.on('leave-full-screen',fullscreen);
-  for(const wc of [window.webContents,music.webContents,side.webContents])wc.on('before-input-event',(e,input)=>{if(input.type==='keyDown'&&!input.isAutoRepeat&&(input.key==='F11'||input.key==='Escape'&&window.isFullScreen())){e.preventDefault();window.setFullScreen(input.key==='F11'?!window.isFullScreen():false);}});
+  for(const wc of [window.webContents,music.webContents,side.webContents,lyricSide.webContents])wc.on('before-input-event',(e,input)=>{if(input.type==='keyDown'&&!input.isAutoRepeat&&(input.key==='F11'||input.key==='Escape'&&window.isFullScreen())){e.preventDefault();window.setFullScreen(input.key==='F11'?!window.isFullScreen():false);}});
   for (const event of ['will-navigate', 'will-redirect']) music.webContents.on(event, (e, url) => { if (!remoteAllowed(url)) e.preventDefault(); });
   music.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   music.webContents.on('did-start-loading', () => send('player:state', { phase: 'loading' }));
@@ -114,7 +119,8 @@ app.whenReady().then(async () => {
   handle('jam:state', () => jam.view());
   handle('app:queue',()=>jam.state.role==='guest'?jam.state.queue:player.call({op:'SNAPSHOT'}));
   handle('app:lyrics',track=>lyrics.get(track));
-  handle('app:panel',value=>{if(![null,'queue','lyrics'].includes(value))throw new Error('Unknown panel');panel=value;selectedTab='music';layout();send('app:panel',panel);});
+  handle('app:panel',value=>{if(value===null)panel={queue:false,lyrics:false};else if(['queue','lyrics'].includes(value))panel[value]=!panel[value];else throw new Error('Unknown panel');selectedTab='music';layout();send('app:panel',panel);return panel;});
+  handle('app:panels',()=>panel);
   handle('addons:state', () => addons.view());
   handle('addons:set', (key,value) => addons.set(key,value));
   handle('jam:join', async invite => {
@@ -147,8 +153,9 @@ app.whenReady().then(async () => {
   ipcMain.on('player:ended', event => {
     if (!player.native&&event.sender === music.webContents && event.senderFrame === music.webContents.mainFrame && jam.state.role === 'host') jam.command('SKIP_NEXT').catch(() => {});
   });
-  window.on('resize', layout); window.on('closed', () => { tunnel.stop(); room.stop(); jam.disconnect(); side.webContents.close();music.webContents.close(); window = null; });
+  window.on('resize', layout); window.on('closed', () => { tunnel.stop(); room.stop(); jam.disconnect(); side.webContents.close();lyricSide.webContents.close();music.webContents.close(); window = null; });
   await side.webContents.loadFile(path.join(__dirname,'ui/side.html'));
+  await lyricSide.webContents.loadFile(path.join(__dirname,'ui/side-lyrics.html'));
   await window.loadFile(path.join(__dirname, 'ui/index.html')); layout();
   if (smoke) {
     selectedTab = 'jam'; layout();
@@ -204,6 +211,16 @@ app.whenReady().then(async () => {
         const removed=await player.call({op:'REMOVE',item:entry.id,revision:added.revision});
         if(!removed.confirmed)throw new Error('Native REMOVE not confirmed');
         console.log('NATIVE_QUEUE_CONFIRMED',JSON.stringify({before:baseline.items.length,afterAdd:added.items.length,afterRemove:removed.items.length}));
+        const lyricTrack=removed.items.find(item=>item.current),lyricResult=await lyrics.get({...lyricTrack,duration:removed.clock.duration});
+        console.log('LIVE_LYRICS',JSON.stringify({title:lyricTrack.title,artist:lyricTrack.artist,lines:lyricResult.lines.length,plain:!!lyricResult.plain}));
+        if(!lyricResult.lines.length)throw new Error('No synced lyrics for reference track');
+        await new Promise(resolve=>setTimeout(resolve,2000));
+        const panelState=await lyricSide.webContents.executeJavaScript(`({lines:document.querySelectorAll('.line').length,status:document.querySelector('#status').textContent,content:document.querySelector('#content').textContent.slice(0,200)})`);
+        if(!panelState.lines)throw new Error('Lyrics panel failed to render: '+JSON.stringify(panelState));
+        fs.writeFileSync(path.join(dir,'stage-1-lyrics.png'),(await lyricSide.webContents.capturePage()).toPNG());
+        fs.writeFileSync(path.join(dir,'stage-1-queue.png'),(await side.webContents.capturePage()).toPNG());
+        fs.writeFileSync(path.join(dir,'stage-1-player.png'),(await window.capturePage()).toPNG());
+
         await player.select({id:'smoke',videoId:'5NV6Rdv1a3I'},true);
         await new Promise(resolve => setTimeout(resolve, 8000));
         selectedTab = 'jam'; layout(); window.minimize();

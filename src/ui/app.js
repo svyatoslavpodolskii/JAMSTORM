@@ -117,8 +117,11 @@ call(window.jam.addons()).then(settings => { for (const key of ['sponsorblock','
 for (const key of ['sponsorblock','adblock']) $(`addon-${key}`).onchange = async event => { const input=event.target; input.disabled=true; try { await call(window.jam.setAddon(key,input.checked)); } catch(error) { input.checked=!input.checked;message(error.message); } finally {input.disabled=false;} };
 
 for(const key of ['invite','settings']) $(key+'-tab').onclick=()=>action(()=>tab(key));
-$('overlay-queue').onclick=()=>action(()=>call(window.jam.panel('queue')));
-$('overlay-lyrics').onclick=()=>action(()=>call(window.jam.panel('lyrics')));
+$('overlay-queue').onclick=()=>action(async()=>{await tab('music');panels(await call(window.jam.panel('queue')));});
+$('overlay-lyrics').onclick=()=>action(async()=>{await tab('music');panels(await call(window.jam.panel('lyrics')));});
 window.jam.onFullscreen(value=>document.body.classList.toggle('fullscreen',value));
 let pollingQueue=false;
 setInterval(async()=>{if(pollingQueue)return;pollingQueue=true;try{const queue=await call(window.jam.queue());if(queue)render({...state,queue});}catch{}finally{pollingQueue=false;}},1500);
+
+function panels(value){for(const key of ['queue','lyrics'])$('overlay-'+key).setAttribute('aria-pressed',String(!!value?.[key]));}
+window.jam.onPanel(panels);call(window.jam.panels()).then(panels).catch(()=>{});
