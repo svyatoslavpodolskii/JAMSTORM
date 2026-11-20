@@ -17,7 +17,10 @@ const smoke = process.argv.includes('--smoke-test') || liveSmoke;
 if (smoke) app.setPath('userData', path.join(app.getPath('temp'), 'jam-desktop-smoke'));
 if (smoke && !liveSmoke) app.disableHardwareAcceleration();
 let window, music, side, lyricSide, player, jam, room, tunnel, addons, panel={queue:true,lyrics:true}, selectedTab = 'music', mode = 'music';
+const nativeMaterialSupported=process.platform==='win32'&&Number(require('node:os').release().split('.')[2])>=22621;
+let material=nativeMaterialSupported?'acrylic':'none',ambientTrack='',ambientBusy=false,lastLevelAt=0,visualsEnabled=true,lastAudioLevel=0;
 const tvUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Cobalt/27.lts.3.1040976-gold (unlike Gecko) v8/13.8.258.54-jit gles Starboard/18, JamDesktop_DESKTOP_x8664_2026/0.2.0 (JamDesktop, Windows) local.jam.desktop/0.2.0';
+let lastLayoutKey='';
 const home = () => mode === 'tv' ? 'https://www.youtube.com/tv' : 'https://music.youtube.com';
 const isLocalPage = require('./local-page.cjs').localPageGuard(path.join(__dirname, 'ui/index.html'));
 const sideGuards=['side.html','side-lyrics.html'].map(name=>require('./local-page.cjs').localPageGuard(path.join(__dirname,'ui',name)));
@@ -28,9 +31,17 @@ function layout() {
   const [width, height] = window.getContentSize(),top=window.isFullScreen()?0:72; music.setBounds({ x: 0, y: top, width, height: Math.max(0, height - top) });
   music.setVisible(selectedTab === 'music');
   const gap=16,panelWidth=Math.min(340,Math.floor((width-340)/2)-gap),panelTop=top+80,panelHeight=Math.max(160,height-panelTop-104);
-  if(side){side.setBounds({x:width-panelWidth-gap,y:panelTop,width:panelWidth,height:panelHeight});side.setVisible(selectedTab==='music'&&panel.queue);}
-  if(lyricSide){lyricSide.setBounds({x:gap,y:panelTop,width:panelWidth,height:panelHeight});lyricSide.setVisible(selectedTab==='music'&&panel.lyrics);}
-  if (selectedTab === 'music') music.webContents.focus();
+  if(side){side.setBounds({x:width-panelWidth-gap,y:panelTop,width:panelWidth,height:panelHeight});side.setVisible(selectedTab==='music'&&!!player?.current&&panel.queue);}
+  if(lyricSide){lyricSide.setBounds({x:gap,y:panelTop,width:panelWidth,height:panelHeight});lyricSide.setVisible(selectedTab==='music'&&!!player?.current&&panel.lyrics);}
+  if(mode==='music'&&music.webContents.getURL().startsWith('https://music.youtube.com/')){
+    const left=player?.current&&panel.lyrics?panelWidth+32:24,right=player?.current&&panel.queue?panelWidth+32:24;
+    const key=JSON.stringify([!!player?.current,left,right]);
+    if(key!==lastLayoutKey){lastLayoutKey=key;music.webContents.executeJavaScript(`(()=>{const root=document.documentElement;root.classList.toggle('jamstorm-listening',${!!player?.current});root.classList.toggle('jamstorm-right-open',${!!player?.current&&panel.queue});root.style.setProperty('--jamstorm-left','${left}px');root.style.setProperty('--jamstorm-right','${right}px');})()`).catch(()=>{});}
+    if(player?.current)music.webContents.executeJavaScript(`(()=>{const page=document.querySelector('ytmusic-player-page');if(!page)return;const r=page.getBoundingClientRect(),root=document.documentElement;for(const [key,value] of Object.entries({x:r.x,y:r.y,right:innerWidth-r.right,bottom:innerHeight-r.bottom})){const name='--jamstorm-page-'+key,next=value+'px';if(root.style.getPropertyValue(name)!==next)root.style.setProperty(name,next);}})()`).catch(()=>{});
+
+  }
+
+
 }
 function send(channel, value) { if (window && !window.isDestroyed()) window.webContents.send(channel, value);for(const view of [side,lyricSide])if(view&&!view.webContents.isDestroyed())view.webContents.send(channel,value); }
 function guard(event) {
@@ -39,6 +50,7 @@ function guard(event) {
   if ((!local&&!overlay)||event.senderFrame!==event.sender.mainFrame) throw new Error('Forbidden sender');
 }
 app.whenReady().then(async () => {
+  require('electron').nativeTheme.themeSource='dark';
   const identityFile = path.join(app.getPath('userData'), 'identity.json'); let identity;
   try { identity = JSON.parse(fs.readFileSync(identityFile, 'utf8')).id; if (!require('./protocol.cjs').uuid.test(identity)) identity = undefined; } catch {}
   jam = new JamSession(identity);
@@ -47,7 +59,7 @@ app.whenReady().then(async () => {
   const roomView = () => ({ ...room.view(), publicUrl: tunnel.url && room.token ? tunnel.url + '/#' + room.token : '' });
   fs.mkdirSync(path.dirname(identityFile), { recursive: true }); fs.writeFileSync(identityFile, JSON.stringify({ id: jam.identity }));
   const prefs = { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false };
-  window = new BrowserWindow({ width: 1320, height: 880, minWidth: 860, minHeight: 620, backgroundColor: '#101112', title: 'JAMSTORM', icon: path.join(__dirname, '../assets/icon.png'), autoHideMenuBar: true,
+  window = new BrowserWindow({ width: 1320, height: 880, minWidth: 860, minHeight: 620, backgroundColor: nativeMaterialSupported?'#00000000':'#151a24',...(nativeMaterialSupported?{backgroundMaterial:'acrylic'}:{}), title: 'JAMSTORM', icon: path.join(__dirname, '../assets/icon.png'), autoHideMenuBar: true,
     webPreferences: { ...prefs, offscreen: smoke && !liveSmoke, preload: path.join(__dirname, 'preload.cjs') }, show: !smoke || liveSmoke });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (e, url) => { if (!isLocalPage(url)) e.preventDefault(); });
@@ -64,6 +76,7 @@ app.whenReady().then(async () => {
     callback({responseHeaders:headers});
   });
   music = new WebContentsView({ webPreferences: { ...prefs, session: musicSession, preload: path.join(__dirname, 'music-preload.cjs') } });
+  music.setBackgroundColor(nativeMaterialSupported?'#00000000':'#151a24');
   await music.webContents.loadURL('about:blank');
   music.webContents.debugger.attach('1.3');
   await music.webContents.debugger.sendCommand('Page.enable');
@@ -94,7 +107,11 @@ app.whenReady().then(async () => {
   for (const event of ['will-navigate', 'will-redirect']) music.webContents.on(event, (e, url) => { if (!remoteAllowed(url)) e.preventDefault(); });
   music.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   music.webContents.on('did-start-loading', () => send('player:state', { phase: 'loading' }));
-  music.webContents.on('did-finish-load', () => send('player:state', { phase: 'ready' }));
+  music.webContents.on('did-finish-load', () => {
+    music.webContents.send('visual:enabled',visualsEnabled);lastLayoutKey='';layout();send('player:state', { phase: 'ready' });
+    if(music.webContents.getURL().startsWith('https://music.youtube.com/'))music.webContents.executeJavaScript(`(()=>{document.documentElement.classList.toggle('jamstorm-native',${material!=='none'});if(!document.querySelector('.jamstorm-ambient')){const light=document.createElement('div');light.className='jamstorm-ambient';document.body.prepend(light);}})()`).catch(()=>{});
+    if(music.webContents.getURL().startsWith('https://music.youtube.com/'))music.webContents.insertCSS(fs.readFileSync(path.join(__dirname,'music-theme.css'),'utf8')).catch(()=>{});
+  });
   music.webContents.on('did-fail-load', (_e, code, _description, _url, mainFrame) => {
     if (mainFrame && code !== -3) { selectedTab = 'jam'; layout(); send('player:state', { phase: 'error', message: 'YouTube Music не загрузился. Проверь подключение к интернету.' }); }
   });
@@ -114,11 +131,25 @@ app.whenReady().then(async () => {
     send('jam:state', state);
   });
   const handle = (name, fn) => ipcMain.handle(name, async (event, ...args) => {
-    guard(event); try { return { ok: true, value: await fn(...args) }; } catch (e) { return { ok: false, error: e.message }; }
+    try { guard(event);return { ok: true, value: await fn(...args) }; } catch (e) { return { ok: false, error: e.message }; }
   });
   handle('jam:state', () => jam.view());
-  handle('app:queue',()=>jam.state.role==='guest'?jam.state.queue:player.call({op:'SNAPSHOT'}));
+  handle('app:queue',async()=>{const value=jam.state.role==='guest'?jam.state.queue:await player.call({op:'SNAPSHOT'});layout();return value;});
   handle('app:lyrics',track=>lyrics.get(track));
+  handle('app:material',value=>{
+    if(!['acrylic','mica','none'].includes(value))throw new Error('Unknown material');
+    material=nativeMaterialSupported?value:'none';
+    if(nativeMaterialSupported)window.setBackgroundMaterial(material);
+    window.setBackgroundColor(material==='none'?'#151a24':'#00000000');music.setBackgroundColor(material==='none'?'#151a24':'#00000000');
+    if(music.webContents.getURL().startsWith('https://music.youtube.com/'))music.webContents.executeJavaScript(`document.documentElement.classList.toggle('jamstorm-native',${material!=='none'})`).catch(()=>{});
+    return {supported:nativeMaterialSupported,material};
+  });
+  handle('app:visuals',enabled=>{if(typeof enabled!=='boolean')throw new Error('Invalid visual setting');visualsEnabled=enabled;music.webContents.send('visual:enabled',enabled);return enabled;});
+  ipcMain.on('player:level',(event,value)=>{
+    if(event.sender!==music.webContents||event.senderFrame!==music.webContents.mainFrame||typeof value!=='number'||!Number.isFinite(value)||value<0||value>1||performance.now()-lastLevelAt<120)return;
+    lastAudioLevel=Math.max(lastAudioLevel,value);lastLevelAt=performance.now();send('app:level',value);
+  });
+
   handle('app:panel',value=>{if(value===null)panel={queue:false,lyrics:false};else if(['queue','lyrics'].includes(value))panel[value]=!panel[value];else throw new Error('Unknown panel');selectedTab='music';layout();send('app:panel',panel);return panel;});
   handle('app:panels',()=>panel);
   handle('addons:state', () => addons.view());
@@ -140,7 +171,7 @@ app.whenReady().then(async () => {
   });
   handle('jam:copy', () => { if (!jam.state.invite) throw new Error('Сначала создай Jam'); clipboard.writeText(jam.state.invite); });
   handle('jam:qr', () => { if (!jam.state.invite) throw new Error('Сначала создай Jam'); return QRCode.toDataURL(jam.state.invite, { errorCorrectionLevel: 'M', margin: 3, width: 256 }); });
-  handle('app:tab', tab => { if (!['music', 'jam','invite','settings'].includes(tab)) throw new Error('Unknown tab'); selectedTab = tab; layout(); });
+  handle('app:tab', tab => { if (!['music', 'jam','invite','settings'].includes(tab)) throw new Error('Unknown tab'); selectedTab = tab; layout();if(tab==='music')music.webContents.focus(); });
   handle('app:mode', async value => { if (!['tv', 'music'].includes(value)) throw new Error('Unknown player'); await applyMode(value); selectedTab = 'music'; layout(); await music.webContents.loadURL(home()); });
   handle('room:start', async () => { if (jam.state.role === 'guest') throw new Error('Для браузерной комнаты хостом должен быть этот ПК'); if (jam.state.role !== 'host') { await jam.host(command => player.call(command)); } return room.start(); });
   handle('room:state', roomView);
@@ -153,6 +184,32 @@ app.whenReady().then(async () => {
   ipcMain.on('player:ended', event => {
     if (!player.native&&event.sender === music.webContents && event.senderFrame === music.webContents.mainFrame && jam.state.role === 'host') jam.command('SKIP_NEXT').catch(() => {});
   });
+  let backdropBusy=false;
+  const ambientTimer=setInterval(async()=>{
+    const item=player.items.find(entry=>entry.id===player.current);
+    if(!item||item.videoId===ambientTrack||ambientBusy||!window||window.isDestroyed())return;
+    ambientBusy=true;const videoId=item.videoId;
+    try{
+      const response=await fetch('https://i.ytimg.com/vi/'+videoId+'/mqdefault.jpg',{signal:AbortSignal.timeout(5000)});
+      if(!response.ok||Number(response.headers.get('content-length')||0)>1000000)return;
+      const data=await response.arrayBuffer();if(data.byteLength>1000000)return;
+      const picture=require('electron').nativeImage.createFromBuffer(Buffer.from(data)).resize({width:24,height:24});
+      const color=require('./ambient.cjs').dominantColor(picture.toBitmap());ambientTrack=videoId;send('app:ambient',color);
+      await music.webContents.executeJavaScript(`document.documentElement.style.setProperty('--jamstorm-ambient',${JSON.stringify(color.join(' '))})`);
+    }catch{}finally{ambientBusy=false;}
+  },2500);
+  window.on('closed',()=>clearInterval(ambientTimer));
+  const backdropTimer=setInterval(async()=>{
+    if(backdropBusy||!window||window.isDestroyed()||selectedTab!=='music'||!player.current)return;
+    backdropBusy=true;
+    try{for(const [view,key] of [[side,'queue'],[lyricSide,'lyrics']]){
+      if(!panel[key]||view.webContents.isDestroyed())continue;
+      const bounds=view.getBounds(),base=music.getBounds();
+      const image=await music.webContents.capturePage({x:bounds.x,y:bounds.y-base.y,width:bounds.width,height:bounds.height});
+      view.webContents.send('app:backdrop',image.resize({width:100}).toDataURL());
+    }}catch{}finally{backdropBusy=false;}
+  },6000);
+  window.on('closed',()=>clearInterval(backdropTimer));
   window.on('resize', layout); window.on('closed', () => { tunnel.stop(); room.stop(); jam.disconnect(); side.webContents.close();lyricSide.webContents.close();music.webContents.close(); window = null; });
   await side.webContents.loadFile(path.join(__dirname,'ui/side.html'));
   await lyricSide.webContents.loadFile(path.join(__dirname,'ui/side-lyrics.html'));
@@ -181,8 +238,8 @@ app.whenReady().then(async () => {
     if (!liveSmoke) fs.writeFileSync(path.join(dir, 'desktop.png'), (await window.webContents.capturePage(undefined, { stayHidden: true, stayAwake: true })).toPNG());
     if (liveSmoke) {
       await addons.set('adblock',true);
-      await window.webContents.executeJavaScript(`document.querySelectorAll('button,input,select,textarea').forEach(el=>el.disabled=true)`);
-      selectedTab = 'music'; layout();
+
+      selectedTab = 'music'; layout();await window.webContents.executeJavaScript(`tab('music')`);
       window.restore(); window.focus(); music.webContents.focus();
       const timeout = setTimeout(() => { console.error('LIVE_SMOKE_TIMEOUT'); app.exit(1); }, 90000);
       try {
@@ -205,10 +262,15 @@ app.whenReady().then(async () => {
         if (playback?.videoId !== '5NV6Rdv1a3I' || playback.playing) throw new Error('TV player adapter failed or manual pause lost');
         const baseline=await player.call({op:'SNAPSHOT'});
         if(!baseline.native)throw new Error('Native queue not readable');
-        const added=await player.call({op:'ADD',videoId:'dQw4w9WgXcQ'});
+        await jam.host(command=>player.call(command));await room.start();
+        const guestCommand=async(op,fields)=>{
+          const response=await fetch('http://127.0.0.1:'+room.port+'/api/command',{method:'POST',headers:{Authorization:'Bearer '+room.token,'Content-Type':'application/json'},body:JSON.stringify({id:require('node:crypto').randomUUID(),op,fields})});
+          const result=await response.json();if(result.error)throw new Error(result.error);return result.queue;
+        };
+        const added=await guestCommand('ADD',{videoId:'dQw4w9WgXcQ'});
         if(!added.confirmed)throw new Error('Native ADD not confirmed');
         const entry=added.items.find(i=>i.videoId==='dQw4w9WgXcQ');
-        const removed=await player.call({op:'REMOVE',item:entry.id,revision:added.revision});
+        const removed=await guestCommand('REMOVE',{item:entry.id,revision:added.revision});
         if(!removed.confirmed)throw new Error('Native REMOVE not confirmed');
         console.log('NATIVE_QUEUE_CONFIRMED',JSON.stringify({before:baseline.items.length,afterAdd:added.items.length,afterRemove:removed.items.length}));
         const lyricTrack=removed.items.find(item=>item.current),lyricResult=await lyrics.get({...lyricTrack,duration:removed.clock.duration});
@@ -220,13 +282,22 @@ app.whenReady().then(async () => {
         fs.writeFileSync(path.join(dir,'stage-1-lyrics.png'),(await lyricSide.webContents.capturePage()).toPNG());
         fs.writeFileSync(path.join(dir,'stage-1-queue.png'),(await side.webContents.capturePage()).toPNG());
         fs.writeFileSync(path.join(dir,'stage-1-player.png'),(await window.capturePage()).toPNG());
+        await player.call({op:'SEEK',videoId:lyricTrack.videoId,position:65000});
+        await new Promise(resolve=>setTimeout(resolve,1800));
+        fs.writeFileSync(path.join(dir,'stage-2-lyrics.png'),(await lyricSide.webContents.capturePage()).toPNG());
+        console.log('PLAYER_GEOMETRY',JSON.stringify(await music.webContents.executeJavaScript(`['ytmusic-player-page','#main-panel','#player-container','#player','ytmusic-player','.html5-video-player','video'].map(selector=>{const el=document.querySelector(selector);if(!el)return {selector};const r=el.getBoundingClientRect(),s=getComputedStyle(el);return {selector,x:r.x,y:r.y,w:r.width,h:r.height,margin:s.margin,transform:s.transform,display:s.display,children:[...el.children].slice(0,4).map(c=>c.tagName+'#'+c.id)};})`)));
+
+        const sources=await require('electron').desktopCapturer.getSources({types:['window'],thumbnailSize:{width:1320,height:880}});
+        const surface=sources.find(source=>source.id===window.getMediaSourceId());
+        if(surface&&!surface.thumbnail.isEmpty())fs.writeFileSync(path.join(dir,'stage-2-full-player.png'),surface.thumbnail.toPNG());
+
 
         await player.select({id:'smoke',videoId:'5NV6Rdv1a3I'},true);
         await new Promise(resolve => setTimeout(resolve, 8000));
         selectedTab = 'jam'; layout(); window.minimize();
         await new Promise(resolve => setTimeout(resolve, 2000));
         const background = await player.sample();
-        console.log('LIVE_BACKGROUND', JSON.stringify({ mode, playing: background?.playing, position: background?.position }));
+        console.log('LIVE_BACKGROUND', JSON.stringify({ mode, playing: background?.playing, position: background?.position,audioLevel:lastAudioLevel,material }));
         if (!background?.playing) throw new Error('Background playback paused');
         await music.webContents.executeJavaScript(`document.querySelector('video').pause()`);
       } catch (e) { console.error('LIVE_SMOKE_FAILED', e.message); console.log('TV_DIAGNOSTIC', await music.webContents.executeJavaScript(`({url:location.href,text:document.body.innerText.slice(-2000),video:!!document.querySelector('video'),ready:document.querySelector('video')?.readyState,src:!!document.querySelector('video')?.currentSrc,player:document.querySelector('.html5-video-player')?.getPlayerState?.(),resources:performance.getEntriesByType('resource').map(x=>({url:x.name.split('?')[0],duration:x.duration})).slice(-8)})`)); clearTimeout(timeout); return app.exit(1); }

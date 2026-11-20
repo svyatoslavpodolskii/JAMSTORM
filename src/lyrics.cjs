@@ -17,7 +17,7 @@ function metadata(track) {
 }
 function choose(candidates,track) {
   const title=normalize(track.title),artist=normalize(track.artist);
-  return candidates.filter(row=>normalize(String(row.trackName||''))===title&&normalize(String(row.artistName||'')).includes(artist))
+  return candidates.filter(row=>normalize(String(row.trackName||''))===title&&normalize(String(row.artistName||''))===artist)
     .filter(row=>!track.duration||Math.abs(row.duration-track.duration)<=8)
     .sort((a,b)=>(Math.abs((a.duration||0)-(track.duration||0))-Math.abs((b.duration||0)-(track.duration||0)))||Number(!!b.syncedLyrics)-Number(!!a.syncedLyrics))[0];
 }

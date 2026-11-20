@@ -75,7 +75,7 @@ function tick(){
   if(index===highlight)return;highlight=index;
   [...$('content').children].forEach((el,i)=>{el.classList.toggle('active',i===index);el.classList.toggle('past',i<index);});
   const current=$('content').children[index];
-  if(current&&performance.now()>manualScrollUntil)current.scrollIntoView({block:'center',behavior:reduced?'instant':'smooth'});
+  if(current&&performance.now()>manualScrollUntil)$('content').scrollTo({top:Math.max(0,current.offsetTop-$('content').offsetTop-($('content').clientHeight-current.offsetHeight)/2),behavior:reduced?'instant':'smooth'});
 }
 async function poll(){
   if(polling||!active)return;polling=true;
@@ -84,3 +84,7 @@ async function poll(){
 }
 call(window.jam.panels()).then(value=>{active=!!value?.[kind];poll();}).catch(error=>status(error.message));
 setInterval(poll,1100);setInterval(tick,100);
+
+window.jam.onBackdrop(value=>{if(typeof value==='string'&&value.startsWith('data:image/png;base64,')&&!matchMedia('(prefers-reduced-transparency: reduce)').matches)document.body.style.setProperty('--backdrop','url("'+value+'")');});
+
+window.jam.onAmbient(color=>{if(Array.isArray(color)&&color.length===3&&color.every(value=>Number.isInteger(value)&&value>=0&&value<=255))document.body.style.setProperty('--ambient',color.join(' '));});
