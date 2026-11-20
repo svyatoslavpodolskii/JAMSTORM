@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const token = location.hash.slice(1) || sessionStorage.getItem('jam-token') || ''; if (token) sessionStorage.setItem('jam-token', token); history.replaceState(null, '', location.pathname);
-let pending = false, signature = '', stopped = false, revision = '';
+let pending = false, signature = '', stopped = false, revision = '', stateVersion=-1;
 const uuid = () => { const b = crypto.getRandomValues(new Uint8Array(16)); b[6] = b[6] & 15 | 64; b[8] = b[8] & 63 | 128; const h = Array.from(b, n => n.toString(16).padStart(2, '0')).join(''); return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`; };
 const clientId = uuid();
 function error(text = '') { $('error').hidden = !text; $('error').textContent = text; }
@@ -11,22 +11,27 @@ async function api(url, body) {
 }
 async function command(op, fields) {
   if (pending) return; pending = true; error();
-  try { await api('/api/command', { id: uuid(), op, fields: { ...fields, ...(['MOVE','REMOVE'].includes(op) ? { revision } : {}) } }); await refresh(); } catch (e) { error(e.message); } finally { pending = false; }
+  try { const result=await api('/api/command', { id: uuid(), op, fields: { ...fields, ...(['MOVE','REMOVE'].includes(op) ? { revision } : {}) } }); if(result.queue)apply(result); await refresh(); } catch (e) { error(e.message); } finally { pending = false; }
 }
 function track(item, inQueue, previous) {
   const row = document.createElement('div'); row.className = 'track';
   const label = document.createElement('div'); label.className = 'label';
   const title = document.createElement('strong'); title.textContent = `${item.current ? '♫ ' : ''}${item.title || item.videoId}`;
   const artist = document.createElement('small'); artist.textContent = item.artist || item.duration || ''; label.append(title, artist);
-  const button = document.createElement('button'); button.textContent = inQueue ? item.current ? 'Пауза / пуск' : 'Играть' : '+ В очередь';
+  const button = document.createElement('button'); button.textContent = inQueue ? item.current ? (item.playing?'Ⅱ':'▶') : '▶' : '＋';button.setAttribute('aria-label',inQueue?'Воспроизвести или приостановить':'Добавить в очередь');
   button.onclick = () => command(inQueue ? 'PLAY' : 'ADD', inQueue ? { item: item.id, videoId: item.videoId, playing: !item.current || !item.playing } : { videoId: item.videoId, title: item.title, artist: item.artist });
-  row.append(label, button);
-  if (inQueue && previous) { const move = document.createElement('button'); move.textContent='↑';move.className='quiet';move.setAttribute('aria-label','Поднять трек выше');move.onclick=()=>command('MOVE',{item:item.id,target:previous.id});row.append(move); }
-  if (inQueue && !item.current) { const remove = document.createElement('button'); remove.textContent = '×'; remove.setAttribute('aria-label', `Удалить ${item.title || 'трек'}`); remove.className = 'quiet'; remove.onclick = () => command('REMOVE', { item: item.id }); row.append(remove); }
+  const cover=document.createElement('img');cover.alt='';cover.loading='lazy';if(/^[\w-]{11}$/.test(item.videoId))cover.src='https://i.ytimg.com/vi/'+item.videoId+'/mqdefault.jpg';row.append(cover,label,button);
+  const actions=document.createElement('div');actions.className='actions';row.append(actions);
+  if (inQueue && previous) { const move = document.createElement('button'); move.textContent='↑';move.className='quiet';move.setAttribute('aria-label','Поднять трек выше');move.onclick=()=>command('MOVE',{item:item.id,target:previous.id});actions.append(move); }
+  if (inQueue && !item.current) { const remove = document.createElement('button'); remove.textContent = '×'; remove.setAttribute('aria-label', `Удалить ${item.title || 'трек'}`); remove.className = 'quiet'; remove.onclick = () => command('REMOVE', { item: item.id }); actions.append(remove); }
   return row;
 }
 async function refresh() {
-  const data = await api('/api/state'); $('status').textContent = 'В комнате · звук у хоста';
+  apply(await api('/api/state'));
+}
+function apply(data){
+  if(Number.isFinite(data.version)&&data.version<stateVersion)return;if(Number.isFinite(data.version))stateVersion=data.version;
+  $('status').textContent = 'В комнате · звук у хоста';
   const items = data.queue?.items || [], playing = data.queue?.clock?.playing; revision = data.queue?.revision || '';
   const nextSignature = JSON.stringify([items, playing]);
   if (signature !== nextSignature) { signature = nextSignature; $('queue').replaceChildren(...items.map((i,index) => track({ ...i, playing }, true, items[index-1]))); if (!items.length) $('queue').textContent = 'Пока тихо. Добавь первый трек из поиска.'; }
@@ -43,3 +48,6 @@ $('search').onsubmit = async event => {
 $('next').onclick = () => command('SKIP_NEXT', {});
 async function poll() { try { await refresh(); } catch(e) { $('status').textContent = 'Нет подключения'; error(e.message); } if (!stopped) setTimeout(poll, 1800); }
 if (!token) { error('Открой полную ссылку-приглашение от хоста.'); stopped = true; } else poll();
+
+function section(key){$('search-section').hidden=key!=='search';$('queue-section').hidden=key!=='queue';for(const name of ['queue','search'])$('show-'+name).classList.toggle('active',name===key);if(key==='search')$('query').focus();}
+$('show-queue').onclick=()=>section('queue');$('show-search').onclick=()=>section('search');

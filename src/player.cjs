@@ -24,16 +24,17 @@ class JamPlayer {
     } catch { return null; }
   }
   async snapshot() {
+    if(this.native){const value=await this.native.read();this.nativeState=value; if(value.available)this.reconcile(value.items);else{this.items=[];this.current=null;}}
     const media = await this.sample();
-    if (media && videoId.test(media.videoId || '')) {
+    if (media && videoId.test(media.videoId || '') && !this.native) {
       const current = this.items.find(i => i.id === this.current);
       if (!current || current.videoId !== media.videoId) {
         let selected = this.items.find(i => i.videoId === media.videoId);
-        if (!selected) {
+        if (!selected && !this.native) {
           if (this.items.length >= 500) return { ok: false, error: 'Очередь Jam достигла лимита 500 треков' };
           selected = { id: String(++this.serial), videoId: media.videoId, title: media.title || media.videoId, artist: media.artist || '' }; this.items.push(selected);
         }
-        this.current = selected.id; this.revision++; this.playbackGeneration = randomUUID();
+        this.current = selected?.id || this.current; this.revision++; this.playbackGeneration = randomUUID();
       }
       const item = this.items.find(i => i.id === this.current);
       if (item && ((media.title && item.title !== media.title) || (media.artist && item.artist !== media.artist))) {
@@ -42,12 +43,40 @@ class JamPlayer {
       this.observed = media;
     }
     const current = this.items.find(i => i.id === this.current);
-    return { ok: true, revision: `${this.generation}:${this.revision}`, items: this.items.map(i => ({ ...i, current: i.id === this.current })), autoplay: [],
+    return { ok: true, native: this.nativeState?.available ?? false, source:this.nativeState?.source||'', revision: `${this.generation}:${this.revision}`, items: this.items.map(i => ({ ...i, current: i.id === this.current })), autoplay: [],
       clock: { generation: this.playbackGeneration, sequence: ++this.sequence, sampledAt: Math.round(performance.now()), age: 0,
         videoId: current?.videoId || '', playbackControl: !!media, playing: !!media?.playing, position: media?.position || 0, duration: media?.duration || 0 } };
   }
   call(command) {
     const result = this.tail.catch(() => {}).then(() => this.execute(command)); this.tail = result; return result;
+  }
+  reconcile(rows) {
+    const previousCurrent=this.current,remaining=[...this.items],next=[];
+    for(const row of rows){
+      let index=row.key?remaining.findIndex(item=>item.nativeKey===row.key):-1;
+      if(index<0)index=remaining.findIndex(item=>item.videoId===row.videoId&&(row.current?item.id===this.current:true));
+      if(index<0)index=remaining.findIndex(item=>item.videoId===row.videoId);
+      const previous=index>=0?remaining.splice(index,1)[0]:null;
+      const item={id:previous?.id||String(++this.serial),videoId:row.videoId,title:row.title||previous?.title||row.videoId,artist:row.artist||previous?.artist||'',nativeKey:row.key||''};
+      next.push(item);if(row.current)this.current=item.id;
+    }
+    if(!next.some(item=>item.id===this.current))this.current=null;
+    if(previousCurrent!==this.current)this.playbackGeneration=randomUUID();
+    if(JSON.stringify(this.items)!==JSON.stringify(next)){this.items=next;this.revision++;}
+  }
+  async nativeExecute(command,before) {
+    const index=this.items.findIndex(item=>item.id===command.item),target=this.items.findIndex(item=>item.id===command.target);
+    if(['REMOVE','MOVE'].includes(command.op)&&command.revision!==before.revision)return {ok:false,error:'Очередь изменилась. Обнови список.'};
+    if(['ADD','PLAY_NEXT'].includes(command.op)&&!videoId.test(command.videoId||''))return {ok:false,error:'Некорректный трек'};
+    if(['REMOVE','MOVE','PLAY'].includes(command.op)&&index<0)return {ok:false,error:'Трек больше не находится в очереди'};
+    if(command.op==='MOVE'&&target<0)return {ok:false,error:'Позиция трека изменилась'};
+    if(command.op==='PLAY'&&this.items[index].videoId!==command.videoId)return {ok:false,error:'Трек изменился'};
+    if(command.op!=='PLAY'||!this.nativeState.items[index]?.current){
+      const value=await this.native.mutate(command.op,{...command,index,targetIndex:target},this.nativeState);
+      this.reconcile(value.items);this.nativeState=value;
+    }
+    if(command.op==='PLAY')await this.browser.executeJavaScript(`(async()=>{window.__jamstormPaused=${command.playing===false};const v=document.querySelector('video');if(!v)return;${command.playing===false?'v.pause()':'await Promise.race([v.play(),new Promise((_,reject)=>setTimeout(()=>reject(new Error("Видео не загрузилось")),8000))])'};})()`,true);
+    return {...await this.snapshot(),confirmed:true};
   }
   async select(item, playing = true) {
     try {
@@ -70,6 +99,12 @@ class JamPlayer {
   async execute(command) {
     const before = await this.snapshot();
     if (command.op === 'SNAPSHOT' || command.op === 'SYNC') return before;
+    if(this.native&&['ADD','PLAY_NEXT','REMOVE','MOVE','PLAY'].includes(command.op))return this.nativeExecute(command,before);
+    if(this.native&&['SKIP_NEXT','SKIP_PREVIOUS'].includes(command.op)){
+      const index=this.items.findIndex(item=>item.id===this.current)+(command.op==='SKIP_NEXT'?1:-1),item=this.items[index];
+      if(!item)return {ok:false,error:'Нет следующего трека'};
+      return this.nativeExecute({op:'PLAY',item:item.id,videoId:item.videoId,playing:true},before);
+    }
     const fail = error => ({ ok: false, error });
     if (['MOVE', 'REMOVE'].includes(command.op) && command.revision !== before.revision) return fail('Queue changed; refresh before editing');
     if (['ADD', 'PLAY_NEXT'].includes(command.op)) {

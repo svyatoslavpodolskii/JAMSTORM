@@ -26,7 +26,7 @@ class BrowserRoom {
   json(res, code, value) { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); }
   async handle(req, res) {
     res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Referrer-Policy', 'no-referrer');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' https://i.ytimg.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'");
     const url = new URL(req.url, 'http://room');
     const assets = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'] };
     if (req.method === 'GET' && assets[url.pathname]) {
@@ -43,7 +43,7 @@ class BrowserRoom {
     if (now - client.since > 10000) { client.count = 0; client.since = now; }
     if (++client.count > 60 || this.clients.size >= 128 && !this.clients.has(ip)) return this.json(res, 429, { error: 'Слишком много запросов. Подожди немного.' });
     client.seen = now; this.clients.set(ip, client);
-    if (req.method === 'GET' && url.pathname === '/api/state') return this.json(res, 200, { queue: this.jam.view().queue, guests: this.clients.size });
+    if (req.method === 'GET' && url.pathname === '/api/state') return this.json(res, 200, { queue: this.jam.view().queue, version:this.jam.view().version, guests: this.clients.size });
     if (req.method === 'GET' && url.pathname === '/api/search') {
       if (client.searching || now - (client.lastSearch || 0) < 1500) return this.json(res, 429, { error: 'Подожди перед следующим поиском' });
       client.searching = true; client.lastSearch = now;
@@ -57,7 +57,7 @@ class BrowserRoom {
       const payload = JSON.stringify({ op, fields }), old = this.pending.get(id);
       if (old && old.payload !== payload) throw new Error('Command ID reused');
       if (!old && this.pending.size >= 4096) throw new Error('Лимит команд достигнут. Перезапусти комнату.');
-      const task = old?.task || this.jam.command(op, fields).then(queue => ({ queue })).catch(e => ({ error: e.message }));
+      const task = old?.task || this.jam.command(op, fields).then(queue => ({ queue, version:this.jam.view().version })).catch(e => ({ error: e.message }));
       this.pending.set(id, { payload, task }); return this.json(res, 200, await task);
     }
     return this.json(res, 404, { error: 'Not found' });

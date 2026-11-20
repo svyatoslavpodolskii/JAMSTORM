@@ -7,10 +7,10 @@ const { discover, advertise, addresses } = require('./discovery.cjs');
 
 class JamSession extends EventEmitter {
   constructor(identity = randomUUID()) {
-    super(); this.identity = identity; this.generation = 0; this.state = { phase: 'idle', role: null, queue: null, peers: 0 }; this.tail = Promise.resolve();
+    super(); this.identity = identity; this.generation = 0; this.state = { version:0, phase: 'idle', role: null, queue: null, peers: 0 }; this.tail = Promise.resolve();
     this.sockets = new Set(); this.channels = new Set(); this.peers = new Map(); this.hostCommands = new Map();
   }
-  update(value) { Object.assign(this.state, value); this.emit('state', this.view()); }
+  update(value) { Object.assign(this.state, value); this.state.version++; this.emit('state', this.view()); }
   view() { return structuredClone(this.state); }
   disconnect() {
     this.generation++; this.abort?.abort(); clearTimeout(this.poll); clearTimeout(this.expiryTimer);

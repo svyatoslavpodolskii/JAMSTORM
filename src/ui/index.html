@@ -3,26 +3,26 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://i.ytimg.com; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>JAMSTORM</title>
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="glass.css">
   <link rel="stylesheet" href="layout.css">
   <link rel="stylesheet" href="addons.css">
-  <link rel="stylesheet" href="native.css">
+  <link rel="stylesheet" href="studio.css">
   <script src="app.js" defer></script>
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><img class="brand-icon" src="icon.svg" width="34" height="34" alt=""> JAMSTORM</div>
+    <div class="brand"><img class="brand-icon" src="icon.png" width="34" height="34" alt=""> JAMSTORM</div>
     <nav aria-label="Разделы"><button id="music-tab" class="tab active" aria-pressed="true">YouTube Music</button><button id="jam-tab" class="tab" aria-pressed="false">Совместная очередь <span id="peer-dot" class="dot"></span></button></nav>
-    <div class="appearance"><label for="player-mode" class="sr-only">Вариант плеера</label><select id="player-mode"><option value="tv">YouTube TV</option><option value="music">YouTube Music</option></select><button id="glass" aria-pressed="true" title="Переключить Liquid Glass">◈ Glass</button></div>
+    <div class="appearance"><label for="player-mode" class="sr-only">Вариант плеера</label><select id="player-mode"><option value="tv">YouTube TV</option><option value="music">YouTube Music</option></select><button id="invite-tab" class="tab">Пригласить</button><button id="settings-tab" class="tab" aria-label="Настройки">⚙</button><button id="overlay-queue" title="Очередь сбоку">☷</button><button id="overlay-lyrics">Текст</button><button id="glass" aria-pressed="true" title="Переключить Liquid Glass">◈ Glass</button></div>
   </header>
   <main>
     <div class="page-heading"><div><h1>Очередь</h1><p class="intro">Музыка для вашей компании</p></div><div id="status" class="status" role="status">Нет подключения</div></div>
     <div id="player-error" class="notice" hidden><span id="player-error-text"></span><button id="retry-player">Открыть заново</button></div>
     <div class="workspace">
-      <aside>
+      <aside id="invite-page" hidden>
         <section class="panel connect-panel room-panel">
           <div class="section-label">БЕЗ ПРИЛОЖЕНИЙ</div><h2>Слушать вместе</h2>
           <p class="muted">Гости ищут музыку в YouTube и управляют общей очередью из браузера. Звук остаётся на ПК.</p>
@@ -54,13 +54,13 @@
           <button id="leave" class="leave full" hidden>Завершить подключение</button>
           </details>
         </section>
-        <section class="panel connect-panel addon-panel"><div class="section-label">ДОПОЛНЕНИЯ</div><h2>Твой способ слушать</h2><label class="addon-option"><span><strong>SponsorBlock</strong><small>Пропуск спонсоров и вставок вне музыки. Запрашивает сегменты у sponsor.ajay.app.</small></span><input id="addon-sponsorblock" type="checkbox" role="switch"></label><label class="addon-option"><span><strong>Блокировка рекламы</strong><small>Базовый сетевой фильтр и нажатие доступной кнопки пропуска. Экспериментально.</small></span><input id="addon-adblock" type="checkbox" role="switch"></label><p class="hint">Дополнения включаются по желанию. Сегменты: SponsorBlock, CC BY-NC-SA 4.0. Неофициальный клиент, не связан с YouTube или Google.</p></section>
+        </aside><aside id="settings-page" hidden><section class="panel connect-panel addon-panel"><div class="section-label">ДОПОЛНЕНИЯ</div><h2>Твой способ слушать</h2><label class="addon-option"><span><strong>SponsorBlock</strong><small>Пропуск спонсоров и вставок вне музыки. Запрашивает сегменты у sponsor.ajay.app.</small></span><input id="addon-sponsorblock" type="checkbox" role="switch"></label><label class="addon-option"><span><strong>Блокировка рекламы</strong><small>Базовый сетевой фильтр и нажатие доступной кнопки пропуска. Экспериментально.</small></span><input id="addon-adblock" type="checkbox" role="switch"></label><p class="hint">Дополнения включаются по желанию. Сегменты: SponsorBlock, CC BY-NC-SA 4.0. Неофициальный клиент, не связан с YouTube или Google.</p></section>
       </aside>
-      <section class="panel queue-panel" aria-label="Очередь Jam">
+      <section id="queue-page" class="panel queue-panel" aria-label="Очередь Jam">
         <div class="queue-heading"><div class="section-label"><span class="step">02</span> ОЧЕРЕДЬ JAM</div><span id="queue-count" class="count">0 треков</span></div>
         <div id="empty" class="empty"><div class="empty-art" aria-hidden="true"><span>♫</span><i></i><i></i><i></i></div><h2>Начинается с одного трека</h2><p>Открой YouTube Music, включи песню и создай Jam.<br>Или подключись к очереди на телефоне.</p><button id="open-music" class="secondary">Открыть YouTube Music <span aria-hidden="true">↗</span></button></div>
         <div id="queue-content" hidden>
-          <div class="now-playing"><div class="record" aria-hidden="true">♫</div><div class="track-text"><span class="eyebrow" id="plays-on">СЕЙЧАС ИГРАЕТ</span><h2 id="now-title">Выбери трек</h2><p id="now-artist" class="muted"></p></div><div class="transport"><button id="previous" class="icon-button" title="Предыдущий трек" aria-label="Предыдущий трек">❮</button><button id="play" class="play-button" aria-label="Воспроизвести">▶</button><button id="next" class="icon-button" title="Следующий трек" aria-label="Следующий трек">❯</button></div></div>
+          <div class="now-playing"><img id="now-cover" class="record" alt="Обложка"><div class="track-text"><span class="eyebrow" id="plays-on">СЕЙЧАС ИГРАЕТ</span><h2 id="now-title">Выбери трек</h2><p id="now-artist" class="muted"></p></div><div class="transport"><button id="previous" class="icon-button" title="Предыдущий трек" aria-label="Предыдущий трек">❮</button><button id="play" class="play-button" aria-label="Воспроизвести">▶</button><button id="next" class="icon-button" title="Следующий трек" aria-label="Следующий трек">❯</button></div></div>
           <div class="timeline"><span id="position">0:00</span><input id="seek" aria-label="Позиция воспроизведения" type="range" min="0" max="1000" value="0"><span id="duration">0:00</span></div>
           <p class="queue-note" id="queue-note"></p>
           <ol id="tracks" class="tracks"></ol>
@@ -69,7 +69,7 @@
       </section>
     </div>
     <div id="message" class="message" role="status" aria-live="polite" hidden></div>
-    <footer><span>JAMSTORM · 0.2 preview</span><span>Музыка играет у хоста · гости выбирают вместе</span></footer>
+    <footer><span>JAMSTORM · 0.3 preview</span><span>Музыка играет у хоста · гости выбирают вместе</span></footer>
   </main>
 </body>
 </html>

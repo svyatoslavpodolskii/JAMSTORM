@@ -3,12 +3,12 @@ const { app, BrowserWindow } = require('electron');
 const fs = require('node:fs'), path = require('node:path');
 app.disableHardwareAcceleration();
 app.whenReady().then(async () => {
-  const root = path.join(__dirname, '..'), svg = fs.readFileSync(path.join(root, 'src/ui/icon.svg'), 'utf8');
+  const root = path.join(__dirname, '..'), svg = fs.readFileSync(path.join(root, 'assets/icon-source.png'));
   const win = new BrowserWindow({ show: false, webPreferences: { offscreen: true, sandbox: true, contextIsolation: true } });
   await win.loadURL('data:text/html,<canvas></canvas>');
   const entries = [];
   for (const size of [16,32,48,64,128,256]) {
-    const data = await win.webContents.executeJavaScript(`new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>{const c=document.querySelector('canvas');c.width=c.height=${size};c.getContext('2d').drawImage(image,0,0,${size},${size});resolve(c.toDataURL('image/png').split(',')[1]);};image.onerror=reject;image.src='data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}';})`);
+    const data = await win.webContents.executeJavaScript(`new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>{const c=document.querySelector('canvas');c.width=c.height=${size};c.getContext('2d').drawImage(image,0,0,${size},${size});resolve(c.toDataURL('image/png').split(',')[1]);};image.onerror=reject;image.src='data:image/png;base64,${Buffer.from(svg).toString('base64')}';})`);
     entries.push({ size, png: Buffer.from(data, 'base64') });
   }
   fs.mkdirSync(path.join(root,'assets'),{recursive:true});

@@ -24,40 +24,43 @@ function render(next) {
       if (qrInvite === expected) { $('invite-qr').src = data; $('invite-qr').hidden = false; }
     }).catch(error => message(error.message)); }
   }
-  $('add-form').hidden = !online;
+  $('add-form').hidden = connecting;
   $('add').disabled = busy;
   const items = Array.isArray(state.queue?.items) ? state.queue.items : [];
   $('queue-count').textContent = `${items.length} треков`;
   $('empty').hidden = items.length > 0; $('queue-content').hidden = !items.length;
   const now = current(); const clock = state.queue?.clock || {};
   $('now-title').textContent = now?.title || 'Выбери трек'; $('now-artist').textContent = now?.artist || '';
-  $('plays-on').textContent = state.role === 'host' ? 'ИГРАЕТ НА ЭТОМ ПК' : 'ИГРАЕТ НА ТЕЛЕФОНЕ';
-  $('queue-note').textContent = state.role === 'host' ? 'Очередь Jam ведётся здесь. Добавляй треки по ссылкам или с телефона. Радио и плейлисты YouTube Music не импортируются.' : 'Это очередь телефона. Команды выполняет хост; звук на ПК выключен.';
+  $('plays-on').textContent = state.role !== 'guest' ? 'ИГРАЕТ НА ЭТОМ ПК' : 'ИГРАЕТ НА ТЕЛЕФОНЕ';
+  $('queue-note').textContent = state.queue?.native ? 'Очередь YouTube Music · изменения видны в самом плеере' : state.role === 'guest' ? 'Очередь телефона · звук у хоста' : 'Включи трек в YouTube Music. Очередь TV экспериментальная.';
+  if(now?.videoId) $('now-cover').src = 'https://i.ytimg.com/vi/'+now.videoId+'/mqdefault.jpg';
   $('play').textContent = clock.playing ? 'Ⅱ' : '▶'; $('play').setAttribute('aria-label', clock.playing ? 'Пауза' : 'Воспроизвести');
-  for (const id of ['play', 'previous', 'next']) $(id).disabled = busy || !online || !now;
+  for (const id of ['play', 'previous', 'next']) $(id).disabled = busy || connecting || !now;
   $('position').textContent = time(clock.position); $('duration').textContent = time(clock.duration);
-  $('seek').disabled = busy || !online || !now || !clock.duration;
+  $('seek').disabled = busy || connecting || !now || !clock.duration;
   if (document.activeElement !== $('seek')) $('seek').value = clock.duration ? Math.round(clock.position / clock.duration * 1000) : 0;
   const signature = JSON.stringify(items);
   if (signature !== lastQueueSignature) {
     lastQueueSignature = signature; $('tracks').replaceChildren();
     items.forEach((item, index) => {
       const li = document.createElement('li'); li.className = `track${item.current ? ' current' : ''}`;
-      const number = document.createElement('span'); number.className = 'track-index'; number.textContent = item.current ? '♫' : String(index + 1);
+      const number = document.createElement('span'); number.className = 'track-index'; number.textContent = ''; const cover=document.createElement('img');cover.src='https://i.ytimg.com/vi/'+item.videoId+'/mqdefault.jpg';cover.alt='';cover.loading='lazy';number.append(cover);
       const name = document.createElement('button'); name.className = 'track-name'; name.textContent = item.title || item.videoId || 'Без названия';
       const artist = document.createElement('small'); artist.textContent = item.artist || ''; name.append(artist);
       name.addEventListener('click', () => action(() => call(window.jam.command('PLAY', { item: item.id, videoId: item.videoId, playing: true }))));
       const remove = document.createElement('button'); remove.className = 'track-remove'; remove.textContent = '×'; remove.title = 'Удалить из очереди'; remove.setAttribute('aria-label', `Удалить ${item.title || 'трек'}`);
-      remove.addEventListener('click', () => action(() => call(window.jam.command('REMOVE', { item: item.id }))));
+      remove.addEventListener('click', () => action(() => call(window.jam.command('REMOVE', { item: item.id, revision: state.queue.revision }))));
       li.append(number, name, remove); $('tracks').append(li);
     });
   }
-  for (const button of document.querySelectorAll('.track button')) button.disabled = busy || !online;
+  for (const button of document.querySelectorAll('.track button')) button.disabled = busy || connecting;
   if (state.error) message(state.error);
 }
 async function tab(value) {
   await call(window.jam.tab(value));
-  for (const name of ['music', 'jam']) { $(`${name}-tab`).classList.toggle('active', name === value); $(`${name}-tab`).setAttribute('aria-pressed', String(name === value)); }
+  for(const [id,key] of [['queue-page','jam'],['invite-page','invite'],['settings-page','settings']]) $(id).hidden=value!==key;
+  document.querySelector('h1').textContent=({jam:'Очередь',invite:'Слушать вместе',settings:'Настройки'})[value]||'Музыка';
+  for (const name of ['music', 'jam','invite','settings']) { $(`${name}-tab`).classList.toggle('active', name === value); $(`${name}-tab`).setAttribute('aria-pressed', String(name === value)); }
 }
 $('music-tab').addEventListener('click', () => action(() => tab('music')));
 $('jam-tab').addEventListener('click', () => action(() => tab('jam')));
@@ -94,9 +97,9 @@ call(window.jam.state()).then(render).catch(error => message(error.message));
 let glass = localStorage.getItem('glass') !== 'off';
 function appearance() { document.body.classList.toggle('glass', glass); $('glass').setAttribute('aria-pressed', String(glass)); }
 $('glass').onclick = () => { glass = !glass; localStorage.setItem('glass', glass ? 'on' : 'off'); appearance(); };
-appearance(); $('music-tab').textContent = 'Плеер'; $('open-music').textContent = 'Открыть ТВ-плеер ↗';
+appearance(); $('player-mode').value='music'; $('music-tab').textContent = 'Плеер'; $('open-music').textContent = 'Открыть плеер ↗';
 $('empty').querySelector('h2').textContent = 'Очередь пока пуста';
-$('empty').querySelector('p').textContent = 'Включи трек в ТВ-плеере или открой браузерную комнату и добавь музыку с телефона.';
+$('empty').querySelector('p').textContent = 'Включи трек в YouTube Music или открой браузерную комнату и добавь музыку с телефона.';
 $('player-mode').onchange = () => action(async () => { await call(window.jam.mode($('player-mode').value)); await tab('music'); });
 let roomSignature = '';
 async function roomRender(value) {
@@ -112,3 +115,10 @@ $('room-copy').onclick = () => action(async () => { await call(window.jam.room('
 setInterval(() => call(window.jam.room('state')).then(roomRender).catch(() => {}), 2500);
 call(window.jam.addons()).then(settings => { for (const key of ['sponsorblock','adblock']) $(`addon-${key}`).checked = settings[key]; }).catch(error=>message(error.message));
 for (const key of ['sponsorblock','adblock']) $(`addon-${key}`).onchange = async event => { const input=event.target; input.disabled=true; try { await call(window.jam.setAddon(key,input.checked)); } catch(error) { input.checked=!input.checked;message(error.message); } finally {input.disabled=false;} };
+
+for(const key of ['invite','settings']) $(key+'-tab').onclick=()=>action(()=>tab(key));
+$('overlay-queue').onclick=()=>action(()=>call(window.jam.panel('queue')));
+$('overlay-lyrics').onclick=()=>action(()=>call(window.jam.panel('lyrics')));
+window.jam.onFullscreen(value=>document.body.classList.toggle('fullscreen',value));
+let pollingQueue=false;
+setInterval(async()=>{if(pollingQueue)return;pollingQueue=true;try{const queue=await call(window.jam.queue());if(queue)render({...state,queue});}catch{}finally{pollingQueue=false;}},1500);

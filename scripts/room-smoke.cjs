@@ -7,8 +7,9 @@ app.whenReady().then(async()=>{
   room=new BrowserRoom(jam,async q=>[{videoId:'abcdefghijk',title:'Проверка: '+q,artist:'JAMSTORM'}]);await room.start();
   const win=new BrowserWindow({width:390,height:844,show:false,webPreferences:{offscreen:true,sandbox:true,contextIsolation:true,nodeIntegration:false}});
   await win.loadURL(`http://127.0.0.1:${room.port}/#${room.token}`);await new Promise(r=>setTimeout(r,400));
-  await win.webContents.executeJavaScript(`document.querySelector('#query').value='test';document.querySelector('#search').requestSubmit(document.querySelector('#search button'))`);
+  await win.webContents.executeJavaScript(`document.querySelector('#show-search').click();document.querySelector('#query').value='test';document.querySelector('#search').requestSubmit(document.querySelector('#search button'))`);
   await new Promise(r=>setTimeout(r,600));await win.webContents.executeJavaScript(`document.querySelector('#results button').click()`);await new Promise(r=>setTimeout(r,600));
+  await win.webContents.executeJavaScript(`document.querySelector('#show-queue').click()`);
   const result=await win.webContents.executeJavaScript(`({queue:document.querySelector('#queue').textContent,error:document.querySelector('#error').textContent,overflow:document.documentElement.scrollWidth>innerWidth,node:typeof require})`);
   if(!result.queue.includes('Проверка: test')||result.error||result.overflow||result.node!=='undefined')throw new Error('Guest browser failed: '+JSON.stringify(result));
   fs.mkdirSync(path.join(__dirname,'../artifacts'),{recursive:true});fs.writeFileSync(path.join(__dirname,'../artifacts/guest-mobile.png'),(await win.webContents.capturePage(undefined,{stayHidden:true})).toPNG());
