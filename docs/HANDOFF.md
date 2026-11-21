@@ -48,3 +48,5 @@ TV: кнопка «Назад» отправляет доверенный Escape
 - Текстовые символы fullscreen/настроек заменены SVG; play/pause морфит две совместимые SVG path. UI-test проверяет реальную transitionProperty=d.
 - Smoke не ждёт CSS animation.finished: occlusion/невидимое окно может заморозить анимацию. Для геометрии smoke отключает startup; отдельный UI review проверяет настоящие startup/morph-анимации.
 - Пользователь может держать локальный EXE открытым. Не убивать его процесс ради загрузки! Копировать EXE/SHA в artifacts/release-upload и загружать копию: PowerShell InFile открывает исходный EXE эксклюзивно и конфликтует с работающим приложением.
+
+Каталог: нижний native player-bar — плавающее стекло с отступами 20px/15px, фон player-bar-background прозрачен. Music CSS вставляется с cssOrigin:user, чтобы important-стили YouTube не возвращали чёрную шапку при SPA-переходах.

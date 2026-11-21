@@ -95,7 +95,7 @@ app.whenReady().then(async () => {
     music.webContents.send('visual:enabled',visualsEnabled);music.webContents.send('filter:enabled',policy.settings.blockExplicit);layout();send('player:state', { phase: 'ready' });
 
     if(music.webContents.getURL().startsWith('https://www.youtube.com/tv'))music.webContents.insertCSS(fs.readFileSync(path.join(__dirname,'tv-theme.css'),'utf8')).catch(()=>{});
-    if(music.webContents.getURL().startsWith('https://music.youtube.com/'))music.webContents.insertCSS(fs.readFileSync(path.join(__dirname,'music-theme.css'),'utf8')).catch(()=>{});
+    if(music.webContents.getURL().startsWith('https://music.youtube.com/'))music.webContents.insertCSS(fs.readFileSync(path.join(__dirname,'music-theme.css'),'utf8'),{cssOrigin:'user'}).catch(()=>{});
   });
   music.webContents.on('did-fail-load', (_e, code, _description, _url, mainFrame) => {
     if (mainFrame && code !== -3) { selectedTab = 'jam'; layout(); send('player:state', { phase: 'error', message: 'YouTube Music не загрузился. Проверь подключение к интернету.' }); }
@@ -279,7 +279,9 @@ app.whenReady().then(async () => {
         if(!baseline.native)throw new Error('Native queue not readable');
         await music.webContents.executeJavaScript(`for(const el of document.querySelectorAll('*'))if(el.clientHeight>200&&el.scrollHeight>el.clientHeight+500)el.scrollTop=650`);
         await new Promise(resolve=>setTimeout(resolve,400));
-        const catalogBackdrop=await music.webContents.executeJavaScript(`({images:[...document.querySelectorAll('ytmusic-browse-response #background.immersive-background')].every(el=>getComputedStyle(el).display==='none'),extraLight:getComputedStyle(document.querySelector('.jamstorm-ambient')).display})`);
+        await music.webContents.executeJavaScript(`(()=>{const home=[...document.querySelectorAll('ytmusic-guide-entry-renderer a')].find(a=>a.getAttribute('href')==='/');home?.click();})()`);
+        await new Promise(resolve=>setTimeout(resolve,1200));
+        const catalogBackdrop=await music.webContents.executeJavaScript(`({images:[...document.querySelectorAll('ytmusic-browse-response>#background,ytmusic-browse-response .immersive-background,ytmusic-fullbleed-thumbnail-renderer[is-background]')].every(el=>getComputedStyle(el).display==='none'),extraLight:getComputedStyle(document.querySelector('.jamstorm-ambient')).display})`);
         if(!catalogBackdrop.images||catalogBackdrop.extraLight!=='none')throw new Error('Catalog adds its own clipped background instead of the shared player material');
         console.log('CATALOG_SHARED_BACKGROUND',JSON.stringify(catalogBackdrop));
         const scrolledHeader=await music.webContents.executeJavaScript(`({background:getComputedStyle(document.querySelector('#nav-bar-background')).backgroundColor,nav:getComputedStyle(document.querySelector('ytmusic-nav-bar')).backgroundColor})`);
