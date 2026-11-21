@@ -18,7 +18,7 @@ class JamPlayer {
         const id = advertisement ? urlId : data.video_id || data.videoId || urlId;
         const metadata = navigator.mediaSession?.metadata;
         return { videoId: id, advertisement, title: advertisement ? '' : document.querySelector('ytmusic-player-bar .title')?.textContent?.trim() || metadata?.title || data.title || id,
-          artist: advertisement ? '' : metadata?.artist || data.author || '', playing: !!media && !media.paused,
+          artwork:advertisement?'':metadata?.artwork?.at(-1)?.src||'',artist: advertisement ? '' : metadata?.artist || data.author || '', playing: !!media && !media.paused,
           position: advertisement ? 0 : Math.round((media?.currentTime || 0) * 1000), duration: advertisement ? 0 : Math.round((Number.isFinite(media?.duration) ? media.duration : 0) * 1000) };
       })()`);
     } catch { return null; }
@@ -43,7 +43,7 @@ class JamPlayer {
       this.observed = media;
     }
     const current = this.items.find(i => i.id === this.current);
-    return { ok: true, native: this.nativeState?.available ?? false, source:this.nativeState?.source||'', revision: `${this.generation}:${this.revision}`, items: this.items.map(i => ({ ...i, current: i.id === this.current })), autoplay: [],
+    return { ok: true, native: this.nativeState?.available ?? false, source:this.nativeState?.source||'', revision: `${this.generation}:${this.revision}`, items: this.items.map(i => ({ ...i, cover:i.id===this.current&&media?.artwork&&(media.artwork.includes('.googleusercontent.com')||!i.cover)?media.artwork:i.cover, current: i.id === this.current })), autoplay: [],
       clock: { generation: this.playbackGeneration, sequence: ++this.sequence, sampledAt: Math.round(performance.now()), age: 0,
         videoId: current?.videoId || '', playbackControl: !!media, playing: !!media?.playing, position: media?.position || 0, duration: media?.duration || 0 } };
   }
@@ -57,12 +57,16 @@ class JamPlayer {
       if(index<0)index=remaining.findIndex(item=>item.videoId===row.videoId&&(row.current?item.id===this.current:true));
       if(index<0)index=remaining.findIndex(item=>item.videoId===row.videoId);
       const previous=index>=0?remaining.splice(index,1)[0]:null;
-      const item={id:previous?.id||String(++this.serial),videoId:row.videoId,title:row.title||previous?.title||row.videoId,artist:row.artist||previous?.artist||'',nativeKey:row.key||''};
+      const item={id:previous?.id||String(++this.serial),videoId:row.videoId,title:row.title||previous?.title||row.videoId,artist:row.artist||previous?.artist||'',cover:row.cover||previous?.cover||'',nativeKey:row.key||''};
       next.push(item);if(row.current)this.current=item.id;
     }
     if(!next.some(item=>item.id===this.current))this.current=null;
     if(previousCurrent!==this.current)this.playbackGeneration=randomUUID();
     if(JSON.stringify(this.items)!==JSON.stringify(next)){this.items=next;this.revision++;}
+  }
+  async ready(id){
+    const result=await this.browser.executeJavaScript(`new Promise(resolve=>{let tries=0;const wait=()=>{const video=document.querySelector('video'),player=document.querySelector('.html5-video-player'),data=player?.getVideoData?.()||{};const current=data.video_id||data.videoId||new URL(location.href).searchParams.get('v');if(video?.readyState>=2&&(current===${JSON.stringify(id)}||player?.classList.contains('ad-showing')))return resolve(true);if(++tries>=100)return resolve(false);setTimeout(wait,100);};wait();})`);
+    if(!result)throw new Error('Песня не загрузилась. Открой каталог и проверь сообщение YouTube.');
   }
   async nativeExecute(command,before) {
     const index=this.items.findIndex(item=>item.id===command.item),target=this.items.findIndex(item=>item.id===command.target);
@@ -75,6 +79,7 @@ class JamPlayer {
       const value=await this.native.mutate(command.op,{...command,index,targetIndex:target},this.nativeState);
       this.reconcile(value.items);this.nativeState=value;
     }
+    if(command.op==='PLAY'&&command.playing!==false)await this.ready(command.videoId);
     if(command.op==='PLAY')await this.browser.executeJavaScript(`(async()=>{window.__jamstormPaused=${command.playing===false};const v=document.querySelector('video');if(!v)return;${command.playing===false?'v.pause()':'await Promise.race([v.play(),new Promise((_,reject)=>setTimeout(()=>reject(new Error("Видео не загрузилось")),8000))])'};})()`,true);
     return {...await this.snapshot(),confirmed:true};
   }

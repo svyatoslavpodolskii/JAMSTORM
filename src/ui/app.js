@@ -12,7 +12,7 @@ async function action(fn) {
 }
 function current() { return state.queue?.items?.find(i => i.current); }
 function render(next) {
-  state = next;
+  state = next;window.listening?.render(next.queue);
   const online = state.phase === 'connected'; const connecting = state.phase === 'connecting';
   $('status').textContent = connecting ? 'Подключаемся…' : state.role==='guest'&&online ? 'Музыка на телефоне' : roomState.active ? 'Комната открыта · гостей: '+((roomState.guests||0)+(state.peers||0)) : online ? 'Jam готов · участников: '+(state.peers||0) : state.phase==='error' ? 'Подключение прервано' : 'Личное прослушивание';
   $('status').classList.toggle('online', online); $('peer-dot').classList.toggle('online', online);
@@ -34,7 +34,7 @@ function render(next) {
   $('now-title').textContent = now?.title || 'Выбери трек'; $('now-artist').textContent = now?.artist || '';
   $('plays-on').textContent = state.role !== 'guest' ? 'Сейчас на этом ПК' : 'Сейчас на телефоне';
   $('queue-note').textContent = state.queue?.native ? 'Очередь YouTube Music · изменения видны в самом плеере' : state.role === 'guest' ? 'Очередь телефона · звук у хоста' : 'Включи трек в YouTube Music. Очередь TV экспериментальная.';
-  if(now?.videoId) $('now-cover').src = 'https://i.ytimg.com/vi/'+now.videoId+'/mqdefault.jpg';
+  if(now?.videoId) $('now-cover').src = window.artwork.cover(now);
   $('play').innerHTML = clock.playing ? '<svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor"><path d="M7 5h3v14H7zm7 0h3v14h-3z"/></svg>' : '<svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor"><path d="m8 5 12 7-12 7z"/></svg>'; $('play').setAttribute('aria-label', clock.playing ? 'Пауза' : 'Воспроизвести');
   for (const id of ['play', 'previous', 'next']) $(id).disabled = busy || connecting || !now;
   $('position').textContent = time(clock.position); $('duration').textContent = time(clock.duration);
@@ -45,7 +45,7 @@ function render(next) {
     lastQueueSignature = signature; $('tracks').replaceChildren();
     items.forEach((item, index) => {
       const li = document.createElement('li'); li.className = `track${item.current ? ' current' : ''}`;
-      const number = document.createElement('span'); number.className = 'track-index'; number.textContent = ''; const cover=document.createElement('img');cover.src='https://i.ytimg.com/vi/'+item.videoId+'/mqdefault.jpg';cover.alt='';cover.loading='lazy';number.append(cover);
+      const number = document.createElement('span'); number.className = 'track-index'; number.textContent = ''; const cover=document.createElement('img');cover.src=window.artwork.cover(item);cover.alt='';cover.loading='lazy';number.append(cover);
       const name = document.createElement('button'); name.className = 'track-name'; name.textContent = item.title || item.videoId || 'Без названия';
       const artist = document.createElement('small'); artist.textContent = item.artist || ''; name.append(artist);
       name.addEventListener('click', () => action(() => call(window.jam.command('PLAY', { item: item.id, videoId: item.videoId, playing: true }))));
@@ -58,15 +58,16 @@ function render(next) {
   if (state.error) message(state.error);
 }
 async function tab(value) {
-  await call(window.jam.tab(value));document.body.classList.toggle('player-view',value==='music');
+  await call(window.jam.tab(value));window.listening?.page(value);document.body.classList.toggle('player-view',value==='music'||value==='catalog');
   for(const [id,key] of [['queue-page','jam'],['invite-page','invite'],['settings-page','settings']]) $(id).hidden=value!==key;
   document.querySelector('.intro').textContent=({jam:'Всё, что хочется услышать дальше.',invite:'Один плеер. Каждый добавляет своё.',settings:'Пусть всё будет по-твоему.'})[value]||'';
-  document.querySelector('h1').textContent=({jam:'Твоя очередь',invite:'Вместе звучит лучше',settings:'Настройки'})[value]||'Музыка';
-  for (const name of ['music', 'jam','invite','settings']) { $(`${name}-tab`).classList.toggle('active', name === value); $(`${name}-tab`).setAttribute('aria-pressed', String(name === value)); }
+  document.querySelector('main .page-heading h1').textContent=({jam:'Твоя очередь',invite:'Вместе звучит лучше',settings:'Настройки'})[value]||'Музыка';
+  for (const name of ['music','catalog','jam','invite','settings']) { $(`${name}-tab`).classList.toggle('active', name === value); $(`${name}-tab`).setAttribute('aria-pressed', String(name === value)); }
 }
+$('catalog-tab').onclick=()=>action(()=>tab('catalog'));
 $('music-tab').addEventListener('click', () => action(() => tab('music')));
 $('jam-tab').addEventListener('click', () => action(() => tab('jam')));
-$('open-music').addEventListener('click', () => action(() => tab('music')));
+$('open-music').addEventListener('click', () => action(async()=>{await tab('music');window.listening.search();}));
 $('host').addEventListener('click', () => action(async () => render(await call(window.jam.host()))));
 $('join-form').addEventListener('submit', event => { event.preventDefault(); action(async () => { const result = await call(window.jam.join($('invite').value)); if (result.phase === 'connected') $('invite').value = ''; render(result); }); });
 // Cancellation must remain possible while join is in flight.
@@ -90,7 +91,7 @@ $('add-form').addEventListener('submit', event => {
 $('retry-player').addEventListener('click', () => action(async () => { $('player-error').hidden = true; await call(window.jam.retry()); await tab('music'); }));
 window.jam.onState(render);
 window.jam.onPlayer(value => {
-  if (value.phase === 'fallback') { $('player-mode').value='music';message(value.message); }
+  if (value.phase === 'fallback') { $('player-mode').value='music';window.listening.mode('music');message(value.message); }
   if (value.phase === 'error') { $('player-error-text').textContent = value.message; $('player-error').hidden = false; tab('jam').catch(() => {}); }
   if (value.phase === 'ready') $('player-error').hidden = true;
 });
@@ -100,7 +101,8 @@ let glass = localStorage.getItem('glass') !== 'off';
 function appearance() { document.body.classList.toggle('glass', glass); $('glass').setAttribute('aria-pressed', String(glass));$('glass').textContent=glass?'Включён':'Выключен'; }
 $('glass').onclick = () => { glass = !glass; localStorage.setItem('glass', glass ? 'on' : 'off'); appearance(); };
 appearance(); $('player-mode').value='music';
-$('player-mode').onchange = () => action(async () => { await call(window.jam.mode($('player-mode').value)); await tab('music'); });
+$('player-mode').onchange = () => action(async () => { const mode=$('player-mode').value;window.listening.mode(mode);await call(window.jam.mode(mode));await tab('music'); });
+window.jam.onMode(mode=>{ $('player-mode').value=mode;window.listening.mode(mode); });
 let roomSignature = '';
 async function roomRender(value) {
   roomState=value;render(state);$('invite-page').classList.toggle('sharing',!!value.active);document.querySelector('.room-panel h2').textContent=value.active?'Приглашение готово':'Хорошая музыка. Хорошая компания.';
@@ -129,11 +131,11 @@ function panels(value){for(const key of ['queue','lyrics'])$('overlay-'+key).set
 window.jam.onPanel(panels);call(window.jam.panels()).then(panels).catch(()=>{});
 
 const reducedTransparency=matchMedia('(prefers-reduced-transparency: reduce)').matches;
-async function nativeMaterial(){const choice=localStorage.getItem('window-material')||'acrylic';$('window-material').value=choice;try{const result=await call(window.jam.material(glass&&!reducedTransparency?choice:'none'));document.body.classList.toggle('native-material',result.material!=='none');$('window-material').disabled=!result.supported;$('material-hint').textContent=result.supported?'Системное размытие Windows 11':'Нужна Windows 11 22H2 или новее';}catch{}}
+async function nativeMaterial(){const choice=localStorage.getItem('window-material')||'mica';$('window-material').value=choice;try{const result=await call(window.jam.material(glass&&!reducedTransparency?choice:'none'));document.body.classList.toggle('native-material',result.material!=='none');$('window-material').disabled=!result.supported;$('material-hint').textContent=result.supported?'Системное размытие Windows 11':'Нужна Windows 11 22H2 или новее';}catch{}}
 $('window-material').onchange=()=>{localStorage.setItem('window-material',$('window-material').value);nativeMaterial();};
 $('glass').addEventListener('click',nativeMaterial);nativeMaterial();
 let visualMotion=localStorage.getItem('ambient-sound')!=='off'&&!matchMedia('(prefers-reduced-motion: reduce)').matches;
 $('ambient-sound').checked=visualMotion;call(window.jam.visuals(visualMotion)).catch(()=>{});
 $('ambient-sound').onchange=()=>{visualMotion=$('ambient-sound').checked;localStorage.setItem('ambient-sound',visualMotion?'on':'off');call(window.jam.visuals(visualMotion)).catch(()=>{});if(!visualMotion)$('ambient-light').style.opacity='.25';};
 window.jam.onAmbient(color=>{if(Array.isArray(color)&&color.length===3&&color.every(value=>Number.isInteger(value)&&value>=0&&value<=255))document.body.style.setProperty('--ambient',color.join(' '));});
-window.jam.onLevel(level=>{if(visualMotion)$('ambient-light').style.opacity=String(.18+level*.32);});
+window.jam.onLevel(level=>{if(visualMotion)$('ambient-light').style.opacity=String(.11+level*.17);});

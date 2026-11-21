@@ -11,7 +11,7 @@ class NativeQueue {
       if(Array.isArray(raw))return {available:true,source:'music',items:raw.slice(0,500).map((entry,index)=>{
         const row=entry.playlistPanelVideoRenderer||entry.playlistPanelVideoWrapperRenderer?.primaryRenderer?.playlistPanelVideoRenderer;
         const text=value=>value?.simpleText||value?.runs?.map(run=>run.text).join('')||'';
-        return {key:String(entry.queueItemId??row?.queueItemId??''),videoId:row?.videoId,title:text(row?.title),artist:text(row?.longBylineText||row?.shortBylineText).split(/[•·]/)[0].trim(),current:!!row?.selected,index};
+        return {key:String(entry.queueItemId??row?.queueItemId??''),videoId:row?.videoId,title:text(row?.title),artist:text(row?.longBylineText||row?.shortBylineText).split(/[•·]/)[0].trim(),cover:row?.thumbnail?.thumbnails?.at(-1)?.url||'',current:!!row?.selected,index};
       }).filter(row=>/^[\\w-]{11}$/.test(row.videoId||''))};
       const p=document.querySelector('.html5-video-player'),ids=p?.getPlaylist?.();
       if(Array.isArray(ids)&&ids.length)return {available:true,source:'tv',items:ids.slice(0,500).filter(id=>/^[\\w-]{11}$/.test(id)).map((videoId,index)=>({videoId,index,current:index===p.getPlaylistIndex?.(),title:videoId,artist:''}))};

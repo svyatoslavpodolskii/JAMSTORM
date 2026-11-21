@@ -41,3 +41,10 @@ test('temporary lyric service errors can be retried',async()=>{
  const track={title:'Song',artist:'Artist',duration:100000};await assert.rejects(provider.get(track));
  assert.equal((await provider.get(track)).lines[0].text,'Recovered');
 });
+test('native PLAY cannot report success before the media stream is ready',async()=>{
+ const player=new JamPlayer({executeJavaScript:async()=>false});
+ player.sample=async()=>({videoId:'abcdefghijk',playing:false});
+ player.native={read:async()=>({available:true,source:'music',items:[{videoId:'abcdefghijk',title:'Song',current:true}]})};
+ const q=await player.call({op:'SNAPSHOT'});
+ await assert.rejects(player.call({op:'PLAY',item:q.items[0].id,videoId:'abcdefghijk',playing:true}),/не загрузилась/);
+});
