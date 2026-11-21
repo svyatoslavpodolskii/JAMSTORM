@@ -1,6 +1,6 @@
 {
   "name": "jamstorm",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "private": true,
   "license": "MIT",
   "author": "JAMSTORM contributors",
@@ -14,7 +14,9 @@
     "tunnel:fetch": "node scripts/fetch-tunnel.cjs",
     "build:dir": "electron-builder --dir --win --x64",
     "smoke": "node scripts/run.cjs --smoke-test",
-    "smoke:live": "node scripts/run.cjs --live-smoke-test"
+    "smoke:live": "node scripts/run.cjs --live-smoke-test",
+    "ui:review": "node scripts/electron-task.cjs review",
+    "icons": "node scripts/electron-task.cjs icons"
   },
   "devDependencies": {
     "electron": "45.4.1",

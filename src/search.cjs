@@ -14,7 +14,7 @@ function parseSearch(html) {
     if (!node || typeof node !== 'object' || results.length >= 24) return;
     const v = node.videoRenderer;
     if (v && /^[\w-]{11}$/.test(v.videoId) && !seen.has(v.videoId)) {
-      seen.add(v.videoId); results.push({ videoId: v.videoId, title: text(v.title), artist: text(v.ownerText), duration: text(v.lengthText) });
+      seen.add(v.videoId); results.push({ videoId: v.videoId, title: text(v.title), artist: text(v.ownerText), explicit:/EXPLICIT|MUSIC_EXPLICIT_BADGE/.test(JSON.stringify(v.badges||[])),duration: text(v.lengthText) });
     }
     for (const value of Object.values(node)) if (value && typeof value === 'object') visit(value);
   }

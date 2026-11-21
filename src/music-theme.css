@@ -1,3 +1,8 @@
-/* The catalog retains YouTube's native geometry, contrast, image sizing and controls. */
-ytmusic-nav-bar{border-bottom:1px solid #ffffff0d}
-ytmusic-search-box #search-container{border-radius:20px}
+/* Geometry stays native. Backgrounds expose the real native window material. */
+html,body,ytmusic-app{background:transparent!important;--ytmusic-color-black1:transparent;--ytmusic-color-black2:#20273360;--ytmusic-color-black3:#20273370;--yt-spec-base-background:transparent}
+ytmusic-app{position:relative;z-index:1}
+ytmusic-browse-response,ytmusic-player-page,#page-manager,#background,ytmusic-guide-renderer,#guide{background:transparent!important}
+ytmusic-nav-bar{background:#1c243266!important;backdrop-filter:blur(28px) saturate(145%);border-bottom:1px solid #ffffff14}
+ytmusic-player-bar{background:#1c243299!important;backdrop-filter:blur(28px);border-top:1px solid #ffffff18}
+ytmusic-search-box #search-container{border-radius:20px;background:#ffffff12!important;backdrop-filter:blur(20px)}
+.jamstorm-ambient{position:fixed;inset:-12%;z-index:0;pointer-events:none;background:radial-gradient(ellipse at 22% 20%,rgb(var(--jamstorm-ambient,146 106 82) / .75),transparent 64%),radial-gradient(ellipse at 90% 85%,rgb(var(--jamstorm-ambient,146 106 82) / .45),transparent 60%);transition:opacity 160ms linear;filter:blur(28px)}

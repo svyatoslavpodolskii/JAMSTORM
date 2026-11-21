@@ -2,7 +2,7 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const { randomBytes, timingSafeEqual } = require('node:crypto');
+const { randomBytes, timingSafeEqual, createHmac, randomUUID } = require('node:crypto');
 const { addresses } = require('./discovery.cjs');
 const { searchYouTube } = require('./search.cjs');
 class BrowserRoom {
@@ -38,16 +38,19 @@ class BrowserRoom {
     if (req.headers.origin && req.headers.origin !== `${req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http'}://${req.headers.host}`) return this.json(res, 403, { error: 'Origin denied' });
     if (this.jam.state.role !== 'host') return this.json(res, 410, { error: 'Jam завершён' });
     const now = Date.now(); for (const [ip, client] of this.clients) if (now - client.seen > 90000) this.clients.delete(ip);
-    const clientId = req.headers['x-jam-client'];
+    let device=(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('jam-device='))?.slice(11)||'';
+    const signed=id=>id+'.'+createHmac('sha256',this.token).update(id).digest('base64url');
+    const parts=device.split('.');if(parts.length!==2||device!==signed(parts[0])){device=signed(randomUUID());res.setHeader('Set-Cookie','jam-device='+device+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000'+(req.headers['x-forwarded-proto']==='https'?'; Secure':''));}
+    const clientId = device.split('.')[0];
     const ip = /^[\da-f-]{36}$/i.test(clientId || '') ? clientId : req.socket.remoteAddress, client = this.clients.get(ip) || { seen: now, since: now, count: 0 };
     if (now - client.since > 10000) { client.count = 0; client.since = now; }
     if (++client.count > 60 || this.clients.size >= 128 && !this.clients.has(ip)) return this.json(res, 429, { error: 'Слишком много запросов. Подожди немного.' });
     client.seen = now; this.clients.set(ip, client);
-    if (req.method === 'GET' && url.pathname === '/api/state') return this.json(res, 200, { queue: this.jam.view().queue, version:this.jam.view().version, guests: this.clients.size });
+    if (req.method === 'GET' && url.pathname === '/api/state') return this.json(res, 200, { queue: this.jam.view().queue, version:this.jam.view().version, guests: this.clients.size, policy:this.policy?.settings||{} });
     if (req.method === 'GET' && url.pathname === '/api/search') {
       if (client.searching || now - (client.lastSearch || 0) < 1500) return this.json(res, 429, { error: 'Подожди перед следующим поиском' });
       client.searching = true; client.lastSearch = now;
-      try { return this.json(res, 200, { items: await this.search(url.searchParams.get('q')) }); } finally { client.searching = false; }
+      try { return this.json(res, 200, { items: (await this.search(url.searchParams.get('q'))).filter(i=>!this.policy?.settings.blockExplicit||!this.policy.settings.hideExplicit||!i.explicit) }); } finally { client.searching = false; }
     }
     if (req.method === 'POST' && url.pathname === '/api/command') {
       if (!req.headers['content-type']?.startsWith('application/json')) throw new Error('Expected JSON');
@@ -57,7 +60,7 @@ class BrowserRoom {
       const payload = JSON.stringify({ op, fields }), old = this.pending.get(id);
       if (old && old.payload !== payload) throw new Error('Command ID reused');
       if (!old && this.pending.size >= 4096) throw new Error('Лимит команд достигнут. Перезапусти комнату.');
-      const task = old?.task || this.jam.command(op, fields).then(queue => ({ queue, version:this.jam.view().version })).catch(e => ({ error: e.message }));
+      const task = old?.task || this.jam.command(op, fields,'browser:'+ip).then(queue => ({ queue, version:this.jam.view().version })).catch(e => ({ error: e.message }));
       this.pending.set(id, { payload, task }); return this.json(res, 200, await task);
     }
     return this.json(res, 404, { error: 'Not found' });

@@ -44,6 +44,21 @@
       },100);
     }
   }
+  if(location.hostname==='music.youtube.com'){
+    const explicit=row=>/MUSIC_EXPLICIT_BADGE|EXPLICIT/.test(JSON.stringify(row?.badges||[]));
+    const filter=()=>{
+      const enabled=document.documentElement?.dataset.jamstormExplicit==='block';
+      for(const node of document.querySelectorAll('ytmusic-responsive-list-item-renderer,ytmusic-playlist-panel-video-renderer')){
+        const blocked=enabled&&explicit(node.data);if(blocked){node.dataset.jamExplicitHidden='true';node.style.display='none';}else if(node.dataset.jamExplicitHidden){delete node.dataset.jamExplicitHidden;node.style.removeProperty('display');}
+      }
+      if(!enabled)return;
+      const el=document.querySelector('#queue'),items=el?.queue?.getItems?.();if(!Array.isArray(items))return;
+      const row=entry=>entry.playlistPanelVideoRenderer||entry.playlistPanelVideoWrapperRenderer?.primaryRenderer?.playlistPanelVideoRenderer;
+      const index=items.findIndex(i=>row(i)?.selected);if(index<0||!explicit(row(items[index])))return;
+      document.querySelector('video')?.pause();const next=items.findIndex((i,n)=>n>index&&!explicit(row(i)));if(next>=0)el.dispatch?.({type:'SET_INDEX',payload:next});
+    };
+    document.addEventListener('play',filter,true);setInterval(filter,350);
+  }
   for (const name of ['visibilitychange', 'webkitvisibilitychange']) document.addEventListener(name, e => e.stopImmediatePropagation(), true);
   // Leanback pauses its application lifecycle when an embedded view loses focus.
   // Keep that lifecycle active; explicit media pause is untouched.

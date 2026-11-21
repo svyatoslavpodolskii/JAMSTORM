@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const token = location.hash.slice(1) || sessionStorage.getItem('jam-token') || ''; if (token) sessionStorage.setItem('jam-token', token); history.replaceState(null, '', location.pathname);
-let currentQueue=null,toastTimer;
+let roomPolicy={},currentQueue=null,toastTimer;
 let pending = false, signature = '', stopped = false, revision = '', stateVersion=-1;
 const uuid = () => { const b = crypto.getRandomValues(new Uint8Array(16)); b[6] = b[6] & 15 | 64; b[8] = b[8] & 63 | 128; const h = Array.from(b, n => n.toString(16).padStart(2, '0')).join(''); return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`; };
 const clientId = uuid();
@@ -20,12 +20,12 @@ function track(item, inQueue, previous) {
   const label = document.createElement('div'); label.className = 'label';
   const title = document.createElement('strong'); title.textContent = item.title || item.videoId;
   const artist = document.createElement('small'); artist.textContent = item.artist || item.duration || ''; label.append(title, artist);
-  const button = document.createElement('button'); button.textContent = inQueue ? item.current ? (item.playing?'Ⅱ':'▶') : '▶' : '＋';button.setAttribute('aria-label',(inQueue?'Воспроизвести или приостановить ':'Добавить в очередь ')+(item.title||''));
+  const button = document.createElement('button'); button.disabled=inQueue&&roomPolicy.guestReorder===false;button.textContent = inQueue ? item.current ? (item.playing?'Ⅱ':'▶') : '▶' : '＋';button.setAttribute('aria-label',(inQueue?'Воспроизвести или приостановить ':'Добавить в очередь ')+(item.title||''));
   button.onclick = () => command(inQueue ? 'PLAY' : 'ADD', inQueue ? { item: item.id, videoId: item.videoId, playing: !item.current || !item.playing } : { videoId: item.videoId, title: item.title, artist: item.artist });
   const cover=document.createElement('img');cover.alt='';cover.loading='lazy';if(/^[\w-]{11}$/.test(item.videoId))cover.src='https://i.ytimg.com/vi/'+item.videoId+'/mqdefault.jpg';row.append(cover,label,button);
-  const menu=document.createElement('details');menu.className='track-menu';const summary=document.createElement('summary');summary.textContent='•••';summary.setAttribute('aria-label','Действия с треком');menu.append(summary);const actions=document.createElement('div');actions.className='actions';menu.append(actions);if(inQueue&&!item.current)row.append(menu);
-  if (inQueue && previous) { const move = document.createElement('button'); move.textContent='Поднять выше';move.className='quiet';move.setAttribute('aria-label','Поднять трек выше');move.onclick=()=>{menu.open=false;command('MOVE',{item:item.id,target:previous.id});};actions.append(move); }
-  if (inQueue && !item.current) { const remove = document.createElement('button'); remove.textContent = 'Убрать из очереди'; remove.setAttribute('aria-label', `Удалить ${item.title || 'трек'}`); remove.className = 'quiet'; remove.onclick = () => {menu.open=false;command('REMOVE', { item: item.id });}; actions.append(remove); }
+  const menu=document.createElement('details');menu.className='track-menu';const summary=document.createElement('summary');summary.textContent='•••';summary.setAttribute('aria-label','Действия с треком');menu.append(summary);const actions=document.createElement('div');actions.className='actions';menu.append(actions);if(inQueue&&!item.current&&roomPolicy.guestReorder!==false)row.append(menu);
+  if (inQueue && previous && roomPolicy.guestReorder!==false) { const move = document.createElement('button'); move.textContent='Поднять выше';move.className='quiet';move.setAttribute('aria-label','Поднять трек выше');move.onclick=()=>{menu.open=false;command('MOVE',{item:item.id,target:previous.id});};actions.append(move); }
+  if (inQueue && !item.current && roomPolicy.guestReorder!==false) { const remove = document.createElement('button'); remove.textContent = 'Убрать из очереди'; remove.setAttribute('aria-label', `Удалить ${item.title || 'трек'}`); remove.className = 'quiet'; remove.onclick = () => {menu.open=false;command('REMOVE', { item: item.id });}; actions.append(remove); }
   return row;
 }
 async function refresh() {
@@ -33,11 +33,11 @@ async function refresh() {
 }
 function apply(data){
   if(Number.isFinite(data.version)&&data.version<stateVersion)return;if(Number.isFinite(data.version))stateVersion=data.version;
-  currentQueue=data.queue;const now=data.queue?.items?.find(item=>item.current);$('guest-now').hidden=!now;if(now){$('guest-title').textContent=now.title;$('guest-artist').textContent=now.artist||'';const src='https://i.ytimg.com/vi/'+now.videoId+'/mqdefault.jpg';if($('guest-cover').src!==src)$('guest-cover').src=src;$('guest-play').textContent=data.queue.clock?.playing?'Ⅱ':'▶';$('guest-play').setAttribute('aria-label',data.queue.clock?.playing?'Пауза':'Воспроизвести');}
+  roomPolicy=data.policy||roomPolicy;currentQueue=data.queue;const now=data.queue?.items?.find(item=>item.current);$('guest-now').hidden=!now;if(now){$('guest-title').textContent=now.title;$('guest-artist').textContent=now.artist||'';const src='https://i.ytimg.com/vi/'+now.videoId+'/mqdefault.jpg';if($('guest-cover').src!==src)$('guest-cover').src=src;$('guest-play').textContent=data.queue.clock?.playing?'Ⅱ':'▶';$('guest-play').setAttribute('aria-label',data.queue.clock?.playing?'Пауза':'Воспроизвести');}
   $('status').textContent = 'В комнате · музыка у хоста';$('total').textContent=String(data.queue?.items?.length||0);
   const items = data.queue?.items || [], playing = data.queue?.clock?.playing; revision = data.queue?.revision || '';
-  const nextSignature = JSON.stringify([items, playing]);
-  $('next').disabled=!items.some((item,index)=>index>0&&items[index-1]?.current);
+  const nextSignature = JSON.stringify([items, playing,roomPolicy]);
+  $('guest-play').disabled=roomPolicy.guestReorder===false;$('next').disabled=roomPolicy.guestReorder===false||!items.some((item,index)=>index>0&&items[index-1]?.current);
   if (signature !== nextSignature) { signature = nextSignature; $('queue').replaceChildren(...items.map((i,index) => track({ ...i, playing }, true, items[index-1]))); if (!items.length) $('queue').textContent = 'Пока тихо. Добавь первый трек из поиска.'; }
 }
 $('search').onsubmit = async event => {

@@ -24,7 +24,7 @@ class JamPlayer {
     } catch { return null; }
   }
   async snapshot() {
-    if(this.native){const value=await this.native.read();this.nativeState=value; if(value.available)this.reconcile(value.items);else{this.items=[];this.current=null;}}
+    if(this.native){let value=await this.native.read();if(this.policy?.settings.blockExplicit&&value.available&&value.items.some(i=>i.explicit)){const selected=value.items.findIndex(i=>i.current);if(value.items[selected]?.explicit){const next=value.items.findIndex((i,n)=>n>selected&&!i.explicit);if(next>=0)await this.native.command('PLAY',{index:next});else await this.browser.executeJavaScript(`document.querySelector('video')?.pause()`);value=await this.native.read();}for(let i=value.items.length-1;i>=0;i--)if(value.items[i].explicit&&!value.items[i].current)await this.native.command('REMOVE',{index:i});value=await this.native.read();value.items=value.items.filter(i=>!i.explicit);}this.nativeState=value; if(value.available)this.reconcile(value.items);else{this.items=[];this.current=null;}}
     const media = await this.sample();
     if (media && videoId.test(media.videoId || '') && !this.native) {
       const current = this.items.find(i => i.id === this.current);
@@ -57,7 +57,7 @@ class JamPlayer {
       if(index<0)index=remaining.findIndex(item=>item.videoId===row.videoId&&(row.current?item.id===this.current:true));
       if(index<0)index=remaining.findIndex(item=>item.videoId===row.videoId);
       const previous=index>=0?remaining.splice(index,1)[0]:null;
-      const item={id:previous?.id||String(++this.serial),videoId:row.videoId,title:row.title||previous?.title||row.videoId,artist:row.artist||previous?.artist||'',cover:row.cover||previous?.cover||'',nativeKey:row.key||''};
+      const item={id:previous?.id||String(++this.serial),videoId:row.videoId,title:row.title||previous?.title||row.videoId,artist:row.artist||previous?.artist||'',explicit:!!row.explicit,cover:row.cover||previous?.cover||'',nativeKey:row.key||''};
       next.push(item);if(row.current)this.current=item.id;
     }
     if(!next.some(item=>item.id===this.current))this.current=null;

@@ -11,12 +11,16 @@ class NativeQueue {
       if(Array.isArray(raw))return {available:true,source:'music',items:raw.slice(0,500).map((entry,index)=>{
         const row=entry.playlistPanelVideoRenderer||entry.playlistPanelVideoWrapperRenderer?.primaryRenderer?.playlistPanelVideoRenderer;
         const text=value=>value?.simpleText||value?.runs?.map(run=>run.text).join('')||'';
-        return {key:String(entry.queueItemId??row?.queueItemId??''),videoId:row?.videoId,title:text(row?.title),artist:text(row?.longBylineText||row?.shortBylineText).split(/[•·]/)[0].trim(),cover:row?.thumbnail?.thumbnails?.at(-1)?.url||'',current:!!row?.selected,index};
+        return {key:String(entry.queueItemId??row?.queueItemId??''),videoId:row?.videoId,title:text(row?.title),artist:text(row?.longBylineText||row?.shortBylineText).split(/[•·]/)[0].trim(),explicit:/MUSIC_EXPLICIT_BADGE|EXPLICIT|EXPLICIT_BADGE/.test(JSON.stringify(row?.badges||[])),cover:row?.thumbnail?.thumbnails?.at(-1)?.url||'',current:!!row?.selected,index};
       }).filter(row=>/^[\\w-]{11}$/.test(row.videoId||''))};
       const p=document.querySelector('.html5-video-player'),ids=p?.getPlaylist?.();
       if(Array.isArray(ids)&&ids.length)return {available:true,source:'tv',items:ids.slice(0,500).filter(id=>/^[\\w-]{11}$/.test(id)).map((videoId,index)=>({videoId,index,current:index===p.getPlaylistIndex?.(),title:videoId,artist:''}))};
       return {available:false,source:location.hostname==='music.youtube.com'?'music':'tv',items:[]};
     })()`);
+  }
+  async metadata(id){
+    if(!/^[\w-]{11}$/.test(id||'')||!this.browser.getURL().startsWith('https://music.youtube.com/'))return {known:false};
+    return this.browser.executeJavaScript(`(async()=>{const app=document.querySelector('ytmusic-app');if(!app?.networkManager?.fetch)return {known:false};const response=await app.networkManager.fetch('/music/get_queue',{videoIds:[${JSON.stringify(id)}]});const entry=response?.queueDatas?.[0]?.content;const row=entry?.playlistPanelVideoRenderer||entry?.playlistPanelVideoWrapperRenderer?.primaryRenderer?.playlistPanelVideoRenderer;if(!row||row.videoId!==${JSON.stringify(id)})return {known:false};return {known:true,explicit:/MUSIC_EXPLICIT_BADGE|EXPLICIT|EXPLICIT_BADGE/.test(JSON.stringify(row.badges||[]))};})()`);
   }
   async command(op, fields) {
     const input=JSON.stringify({op,videoId:fields.videoId,index:fields.index,targetIndex:fields.targetIndex});

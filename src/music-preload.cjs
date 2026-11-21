@@ -10,7 +10,7 @@ document.addEventListener('ended', event => {
 // It is never connected to speakers and never replaces the player's audio path.
 let visualsEnabled=false,analysis=null,analysisBusy=false;
 function stopAnalysis(){if(!analysis)return;analysis.stream.getTracks().forEach(track=>track.stop());analysis.context.close().catch(()=>{});analysis=null;}
-ipcRenderer.on('visual:enabled',(_event,value)=>{visualsEnabled=!!value;if(!visualsEnabled)stopAnalysis();});
+ipcRenderer.on('visual:enabled',(_event,value)=>{visualsEnabled=!!value;if(visualsEnabled&&!document.querySelector('.jamstorm-ambient')){const light=document.createElement('div');light.className='jamstorm-ambient';document.body?.prepend(light);}if(!visualsEnabled)stopAnalysis();});
 async function startAnalysis(video){
  if(analysis||analysisBusy||!visualsEnabled||video.paused||typeof video.captureStream!=='function'||!video.currentSrc.startsWith('blob:'+location.origin+'/'))return;
  analysisBusy=true;
@@ -30,6 +30,10 @@ setInterval(()=>{
  let level=0;
  if(!video.paused){analysis.analyser.getByteFrequencyData(analysis.samples);level=Math.min(1,Math.sqrt(analysis.samples.slice(1,48).reduce((sum,value)=>sum+value*value,0)/47)/180);}
  ipcRenderer.send('player:level',level);
- const light=document.querySelector('.jamstorm-ambient');if(light)light.style.opacity=String(.22+level*.32);
+ const light=document.querySelector('.jamstorm-ambient');if(light)light.style.opacity=String(.25+level*.5);
 },160);
 window.addEventListener('pagehide',stopAnalysis);
+
+// The Cast icon is present in the site even when this runtime has no Media Router.
+document.addEventListener('click',event=>{if(event.composedPath().some(el=>el?.tagName==='YTMUSIC-CAST-BUTTON')){event.preventDefault();event.stopImmediatePropagation();ipcRenderer.send('player:cast');}},true);
+ipcRenderer.on('filter:enabled',(_event,value)=>{if(document.documentElement)document.documentElement.dataset.jamstormExplicit=value?'block':'allow';});

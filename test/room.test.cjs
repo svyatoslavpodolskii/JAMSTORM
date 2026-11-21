@@ -5,6 +5,19 @@ const { JamPlayer } = require('../src/player.cjs');
 const { JamSession } = require('../src/session.cjs');
 const { parseSearch } = require('../src/search.cjs');
 const { addresses } = require('../src/discovery.cjs');
+const {PlaybackPolicy}=require('../src/policy.cjs');
+
+test('signed browser identity keeps guest quota when the client header changes', {skip:!addresses().length},async t=>{
+ const policy=new PlaybackPolicy();policy.set({blockExplicit:false,guestLimit:1});
+ const player=new JamPlayer({});player.sample=async()=>null;
+ const jam=new JamSession();t.after(()=>jam.disconnect());
+ await jam.host((command,context={})=>['SNAPSHOT','SYNC'].includes(command.op)?player.call(command):policy.run(command,context.actor,c=>player.call(c),()=>player.call({op:'SNAPSHOT'}),()=>{}));
+ const room=new BrowserRoom(jam);room.policy=policy;t.after(()=>room.stop());await room.start();
+ const base='http://127.0.0.1:'+room.port,headers={Authorization:'Bearer '+room.token,'Content-Type':'application/json'};
+ const first=await fetch(base+'/api/state',{headers}),cookie=first.headers.get('set-cookie').split(';')[0];await first.json();
+ const send=()=>fetch(base+'/api/command',{method:'POST',headers:{...headers,Cookie:cookie,'X-Jam-Client':randomUUID()},body:JSON.stringify({id:randomUUID(),op:'ADD',fields:{videoId:'abcdefghijk'}})}).then(r=>r.json());
+ assert.equal((await send()).queue.items.length,1);assert.match((await send()).error,/Лимит/);assert.equal(player.items.length,1);
+});
 test('browser guests authenticate, search, share real Jam queue and deduplicate edits', { skip: !addresses().length }, async t => {
   const player = new JamPlayer({}); player.sample = async()=>null;
   const jam = new JamSession(); t.after(()=>jam.disconnect());

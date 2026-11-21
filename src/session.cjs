@@ -84,7 +84,7 @@ class JamSession extends EventEmitter {
       if (generation === this.generation) { this.disconnect(); this.update({ phase: 'error', error: 'Связь с телефоном потеряна. Подключись по приглашению снова.' }); }
     }
   }
-  async command(op, fields = {}) {
+  async command(op, fields = {}, actor = null) {
     const allowed = ['ADD', 'PLAY_NEXT', 'REMOVE', 'MOVE', 'PLAY', 'SEEK', 'SKIP_NEXT', 'SKIP_PREVIOUS'];
     if (!allowed.includes(op)) throw new Error('Unsupported command');
     const generation = this.generation;
@@ -94,7 +94,7 @@ class JamSession extends EventEmitter {
       if (fields.revision !== undefined && fields.revision !== this.state.queue.revision) throw new Error('Очередь изменилась. Повтори действие после обновления.');
       request.revision = this.state.queue.revision;
     }
-    const result = this.state.role === 'host' ? await this.adapter(request) : await this.request(request);
+    const result = this.state.role === 'host' ? await this.adapter(request,{actor}) : await this.request(request);
     if (generation === this.generation && result.items) this.update({ queue: result });
     if (!result.ok) throw new Error(result.error || 'Команда отклонена');
     return result;
@@ -153,7 +153,7 @@ class JamSession extends EventEmitter {
           response = previous.body === JSON.stringify(command) ? await previous.result : { ok: false, error: 'Command id reused' };
         } else if (this.hostCommands.size >= 4096) response = { ok: false, error: 'Session command limit reached' };
         else {
-          const result = Promise.resolve().then(() => this.adapter(command)).catch(() => ({ ok: false, error: 'Outcome unknown; refresh queue before another edit' }));
+          const result = Promise.resolve().then(() => this.adapter(command,{actor:'android:'+channel.identity})).catch(error => ({ ok: false, error: error.message || 'Outcome unknown; refresh queue before another edit' }));
           this.hostCommands.set(`${channel.identity}:${command.id}`, { body: JSON.stringify(command), result });
           response = await result;
           if (generation === this.generation && response.items) this.update({ queue: response });

@@ -10,8 +10,10 @@ let state={phase:'idle',role:null,peers:0,queue:{ok:true,native:true,revision:'r
 const fixtures=[['5NV6Rdv1a3I','Get Lucky','Daft Punk'],['fLexgOxsZu0','Uptown Funk','Mark Ronson · Bruno Mars'],['kJQP7kiw5Fk','Despacito','Luis Fonsi · Daddy Yankee']];
 const windows=[];const errors=[];
 const handle=(key,fn)=>ipcMain.handle(key,async(_event,...args)=>{try{return {ok:true,value:await fn(...args)};}catch(error){return {ok:false,error:error.message};}});
+handle('app:policy',()=>({blockExplicit:true,hideExplicit:true,guestLimit:3,guestReorder:false}));handle('app:open-browser',()=>{});
 handle('app:material',value=>({material:value,supported:true}));handle('app:visuals',()=>true);
 handle('jam:state',()=>state);handle('app:queue',()=>state.queue);handle('app:panels',()=>panels);
+handle('jam:command',(op,fields)=>{if(op==='MOVE'){const items=state.queue.items,from=items.findIndex(i=>i.id===fields.item),to=items.findIndex(i=>i.id===fields.target);const [item]=items.splice(from,1);items.splice(to,0,item);state.queue.revision='review:drag';}return state.queue;});
 handle('app:search',()=>fixtures.map(([videoId,title,artist])=>({videoId,title,artist})));handle('app:play-track',()=>state.queue);
 handle('app:tab',()=>({mode:'music'}));handle('app:panel',key=>panels=require('../src/ui/panel-modes.js').nextPanel(panels,key));
 handle('addons:state',()=>({adblock:false,sponsorblock:false}));handle('addons:set',()=>{});
@@ -28,8 +30,9 @@ app.whenReady().then(async()=>{
  const win=await make('index.html',1320,880);
  await new Promise(resolve=>setTimeout(resolve,120));
  const bootMotion=await win.webContents.executeJavaScript(`document.getAnimations().filter(a=>a.playState==='running').map(a=>a.animationName||'')`);
+ await shot(win,'boot-vortex');
  if(!bootMotion.includes('boot-stage')||!bootMotion.includes('boot-bar'))throw new Error('Startup animation did not play: '+bootMotion);
- await win.webContents.executeJavaScript(`tab('jam')`);await shot(win,'01-empty-queue');
+ await new Promise(resolve=>setTimeout(resolve,1400));await win.webContents.executeJavaScript(`tab('jam')`);await shot(win,'01-empty-queue');
  state={...state,queue:{...state.queue,items:fixtures.map(([videoId,title,artist],index)=>({id:String(index+1),videoId,title,artist,current:index===0}))}};
  await win.webContents.executeJavaScript(`render(${JSON.stringify(state)})`);await shot(win,'02-queue');
  await win.webContents.executeJavaScript(`tab('invite')`);await shot(win,'03-invite');
@@ -44,7 +47,7 @@ app.whenReady().then(async()=>{
  const variants=[{lyrics:true,queue:true},{lyrics:false,queue:true},{lyrics:true,queue:false},{lyrics:false,queue:false}];
  for(const [i,value] of variants.entries()){
   await win.webContents.executeJavaScript(`window.listening.panels(${JSON.stringify(value)},false)`);await shot(win,'stage-'+i);
-  const geometry=await win.webContents.executeJavaScript(`(()=>{const art=document.querySelector('#stage-cover').getBoundingClientRect();return {width:art.width,height:art.height,right:art.right,left:art.left};})()`);
+  const geometry=await win.webContents.executeJavaScript(`(()=>{const art=document.querySelector('#cover-frame').getBoundingClientRect();return {width:art.width,height:art.height,right:art.right,left:art.left};})()`);
   if(Math.abs(geometry.width-geometry.height)>1||geometry.width>480||geometry.left<0||geometry.right>1320)throw new Error('Unbounded artwork '+JSON.stringify(geometry));
  }
  await win.webContents.executeJavaScript(`window.listening.panels({lyrics:true,queue:true},false)`);
@@ -92,7 +95,29 @@ app.whenReady().then(async()=>{
  await shot(win,'tv-exclusive');await win.webContents.executeJavaScript(`window.listening.mode('music')`);
  await win.webContents.executeJavaScript(`document.querySelector('#stage-search').click();document.querySelector('#stage-query').value='test';document.querySelector('#stage-search-form').requestSubmit()`);await shot(win,'search-dialog');
  const searchCount=await win.webContents.executeJavaScript(`document.querySelectorAll('.search-result').length`);if(searchCount!==3)throw new Error('Search missing results');
+
+ await win.webContents.executeJavaScript(`document.querySelector('#search-dialog').close();document.dispatchEvent(new KeyboardEvent('keydown',{key:'л',code:'KeyK',ctrlKey:true,bubbles:true}))`);
+ if(!await win.webContents.executeJavaScript(`document.querySelector('#search-dialog').open`))throw new Error('Russian Ctrl K failed');
+ await win.webContents.executeJavaScript(`document.querySelector('#search-dialog').close();window.listening.panels({lyrics:'hidden',queue:'side'},false);document.querySelector('#vinyl-mode').checked=true;document.querySelector('#vinyl-mode').dispatchEvent(new Event('change'));window.listening.render({...${JSON.stringify(state.queue)},clock:{...${JSON.stringify(state.queue.clock)},playing:true}})`);
+ await new Promise(resolve=>setTimeout(resolve,800));await shot(win,'vinyl');
+ const spinning=await win.webContents.executeJavaScript(`({round:document.body.classList.contains('vinyl'),label:document.body.classList.contains('vinyl-paper'),rate:document.querySelector('#record-spin').getAnimations()[0]?.playbackRate})`);
+ if(!spinning.round||!spinning.label||!spinning.rate)throw new Error('Vinyl failed '+JSON.stringify(spinning));
+ await win.webContents.executeJavaScript(`(()=>{const rows=document.querySelectorAll('#stage-tracks .stage-track'),data=new DataTransfer();rows[2].dispatchEvent(new DragEvent('dragstart',{dataTransfer:data,bubbles:true}));rows[1].dispatchEvent(new DragEvent('drop',{dataTransfer:data,bubbles:true}));})()`);
+ await new Promise(resolve=>setTimeout(resolve,100));if(state.queue.items[1].id!=='3')throw new Error('Drag drop did not move native queue fixture');
+ await win.webContents.executeJavaScript(`document.body.classList.add('fullscreen')`);await shot(win,'fullscreen-player');
+ if(!await win.webContents.executeJavaScript(`getComputedStyle(document.querySelector('#fullscreen-nav')).display==='flex'`))throw new Error('Fullscreen navigation missing');
+
+ // Public screenshots use our own artwork and original lyric fixture, never copied lyrics or covers.
+ win.setSize(1320,880);
+ const publicQueue={...state.queue,items:state.queue.items.map((i,n)=>({...i,title:['Afterglow','Night drive','Slow orbit'][n],artist:'JAMSTORM Sessions'})),clock:{position:32000,duration:180000,playing:false}};
+ state={...state,queue:publicQueue};
+ await win.webContents.executeJavaScript(`render(${JSON.stringify(state)});document.body.classList.remove('fullscreen');document.querySelector('#vinyl-mode').checked=false;document.querySelector('#vinyl-mode').dispatchEvent(new Event('change'));window.listening.render(${JSON.stringify(publicQueue)});window.listening.panels({lyrics:'side',queue:'side'},false)`);
+ await new Promise(resolve=>setTimeout(resolve,700));
+ const publicArt=require('node:url').pathToFileURL(path.join(__dirname,'../.github/media/cover-demo.svg')).href;
+ await win.webContents.executeJavaScript(`Promise.all([...document.querySelectorAll('#stage-cover,#dock-cover,.stage-track img')].map(image=>{image.src=${JSON.stringify(publicArt)};return image.decode().catch(()=>{});}));window.playerEffects.ambient([192,120,75])`);await shot(win,'public-player');
+ await win.webContents.executeJavaScript(`window.listening.panels({lyrics:'center',queue:'hidden'},false)`);await new Promise(resolve=>setTimeout(resolve,700));await shot(win,'public-lyrics');
+ await win.webContents.executeJavaScript(`window.listening.panels({lyrics:'hidden',queue:'side'},false);document.querySelector('#vinyl-mode').checked=true;document.querySelector('#vinyl-mode').dispatchEvent(new Event('change'))`);await shot(win,'public-vinyl');
  if(errors.length)throw new Error(errors.join('\n'));
- console.log('UI_REVIEW_OK',JSON.stringify({screenshots:19,resizeCases:cases,toolbar:header,lyrics:lyricState,motion,bootMotion}));
+ console.log('UI_REVIEW_OK',JSON.stringify({screenshots:25,resizeCases:cases,toolbar:header,lyrics:lyricState,motion,bootMotion}));
  app.exit(0);
 }).catch(error=>{console.error('UI_REVIEW_FAILED',error.stack);app.exit(1);});

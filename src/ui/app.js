@@ -51,14 +51,14 @@ function render(next) {
       name.addEventListener('click', () => action(() => call(window.jam.command('PLAY', { item: item.id, videoId: item.videoId, playing: true }))));
       const remove = document.createElement('button'); remove.className = 'track-remove'; remove.textContent = '×'; remove.title = 'Удалить из очереди'; remove.setAttribute('aria-label', `Удалить ${item.title || 'трек'}`);
       remove.hidden=item.current; remove.addEventListener('click', () => action(() => call(window.jam.command('REMOVE', { item: item.id, revision: state.queue.revision }))));
-      li.append(number, name, remove); $('tracks').append(li);
+      li.append(number, name, remove);window.listening?.drag(li,item,items); $('tracks').append(li);
     });
   }
   for (const button of document.querySelectorAll('.track button')) button.disabled = busy || connecting;
   if (state.error) message(state.error);
 }
 async function tab(value) {
-  const result=await call(window.jam.tab(value));if(result?.mode){$('player-mode').value=result.mode;window.listening.mode(result.mode);}window.listening?.page(value);document.body.classList.toggle('player-view',value==='music'||value==='catalog');
+  document.body.classList.toggle('queue-view',value==='jam');const result=await call(window.jam.tab(value));if(result?.mode){$('player-mode').value=result.mode;window.listening.mode(result.mode);}window.listening?.page(value);document.body.classList.toggle('player-view',value==='music'||value==='catalog');
   for(const [id,key] of [['queue-page','jam'],['invite-page','invite'],['settings-page','settings']]) $(id).hidden=value!==key;
   document.querySelector('.intro').textContent=({jam:'Всё, что хочется услышать дальше.',invite:'Один плеер. Каждый добавляет своё.',settings:'Пусть всё будет по-твоему.'})[value]||'';
   document.querySelector('main .page-heading h1').textContent=({jam:'Твоя очередь',invite:'Вместе звучит лучше',settings:'Настройки'})[value]||'Музыка';
@@ -137,5 +137,13 @@ $('glass').addEventListener('click',nativeMaterial);nativeMaterial();
 let visualMotion=localStorage.getItem('ambient-sound')!=='off'&&!matchMedia('(prefers-reduced-motion: reduce)').matches;
 $('ambient-sound').checked=visualMotion;call(window.jam.visuals(visualMotion)).catch(()=>{});
 $('ambient-sound').onchange=()=>{visualMotion=$('ambient-sound').checked;localStorage.setItem('ambient-sound',visualMotion?'on':'off');call(window.jam.visuals(visualMotion)).catch(()=>{});if(!visualMotion)$('ambient-light').style.opacity='.25';};
-window.jam.onAmbient(color=>{if(Array.isArray(color)&&color.length===3&&color.every(value=>Number.isInteger(value)&&value>=0&&value<=255))document.body.style.setProperty('--ambient',color.join(' '));});
-window.jam.onLevel(level=>{if(visualMotion)$('ambient-light').style.opacity=String(.28+level*.24);});
+window.jam.onAmbient(color=>{if(Array.isArray(color)&&color.length===3&&color.every(value=>Number.isInteger(value)&&value>=0&&value<=255))window.playerEffects.ambient(color);});
+window.jam.onLevel(level=>{if(visualMotion){$('ambient-light').style.opacity=String(.25+level*.5);$('ambient-light').style.transform='scale('+(1+level*.09)+')';}});
+
+for(const button of document.querySelectorAll('#fullscreen-nav [data-page]'))button.onclick=()=>action(()=>tab(button.dataset.page));
+window.jam.onSearch?.(()=>action(async()=>{await tab('music');window.listening.search();}));
+window.jam.onCast?.(()=>action(async()=>{await tab('settings');$('cast-dialog').showModal();}));
+$('cast-close').onclick=()=>$('cast-dialog').close();$('cast-browser').onclick=()=>call(window.jam.openBrowser()).catch(error=>message(error.message));$('cast-room').onclick=()=>{$('cast-dialog').close();$('invite-tab').click();};
+async function loadPolicy(){try{const value=await call(window.jam.policy());for(const [id,key] of [['block-explicit','blockExplicit'],['hide-explicit','hideExplicit'],['guest-reorder','guestReorder']])$(id).checked=value[key];$('guest-limit').value=value.guestLimit;}catch(error){message(error.message);}}
+for(const id of ['block-explicit','hide-explicit','guest-reorder','guest-limit'])$(id).onchange=async()=>{try{await call(window.jam.policy({blockExplicit:$('block-explicit').checked,hideExplicit:$('hide-explicit').checked,guestReorder:$('guest-reorder').checked,guestLimit:Number($('guest-limit').value)}));}catch(error){message(error.message);await loadPolicy();}};
+loadPolicy();
