@@ -8,10 +8,10 @@ SilentInstall silent
 AutoCloseWindow true
 ShowInstDetails nevershow
 SetCompressor /SOLID zlib
-VIProductVersion "0.5.0.0"
+VIProductVersion "0.5.1.0"
 VIAddVersionKey /LANG=1033 "ProductName" "JAMSTORM"
 VIAddVersionKey /LANG=1033 "FileDescription" "YouTube Music desktop companion"
-VIAddVersionKey /LANG=1033 "FileVersion" "0.5.0"
+VIAddVersionKey /LANG=1033 "FileVersion" "0.5.1"
 VIAddVersionKey /LANG=1033 "LegalCopyright" "Jam Desktop contributors"
 
 Section

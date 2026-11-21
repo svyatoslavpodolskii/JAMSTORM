@@ -20,3 +20,11 @@ The first review found invitation controls below the fold, redundant toolbar con
 ## 0.5 correction
 
 The previous approach changed private YouTube layout and layered independent WebContentsViews. User screenshots exposed clipping, stretched low-resolution artwork, unreadable catalog backgrounds and TV overlap. That approach was removed. The replacement is a single CSS grid, bounded high-resolution artwork, a persistent local playback dock, explicit catalog navigation and native web pages with untouched geometry. CloudMus informed the composition; no Qt code or resources were ported. Live verification also found and fixed a first-play race: the adapter now waits for the media stream before confirming PLAY.
+
+## 0.5.1 short-window and focus correction
+
+The cover is constrained by the actual center container height, including search, metadata and the first-use CTA. Search lives in an independent grid row. Review checks 40 combinations at 1163×774, 1163×700, 860×620, 1320×620 and 960×650 with empty/full playback and side/center/hidden surfaces; hit testing verifies search remains clickable and the CTA is fully visible. Centered lyrics are checked against the actual bounded scroll viewport, not an overflowing padded child.
+
+Words and Queue cycle hidden → side → center; only one can own the center. Hidden panels are inert. Center lyrics replace artwork, track the current line and animate emphasis/scroll. The preserved artwork remains in the dock. Startup, panel transitions and lyric transitions have actual running-animation checks, with reduced-motion alternatives. Windows glass no longer sits below a 94% opaque body; Acrylic is the fresh-install default and saved material preferences remain valid.
+
+The original coral icon is restored inside a transparent rounded SVG boundary, which is also rasterized for the ICO. TV gets its own toolbar and inset native surface; catalog navigation from TV actually restores Music UA/player mode and loads music.youtube.com. Live TV→Music navigation, native guest queue edits, synchronized lyrics, HQ art and background audio passed. This styles the TV shell without claiming to replace Leanback or verify physical Cast pairing.

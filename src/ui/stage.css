@@ -42,7 +42,7 @@ body:after{opacity:.014}
 .cover-frame{position:relative;width:min(100%,clamp(220px,calc(100vh - 365px),440px));aspect-ratio:1;flex:none;border-radius:22px;overflow:hidden;box-shadow:0 20px 50px #0004,inset 0 1px #ffffff18;background:#1c222a;view-transition-name:artwork}
 .cover-frame img{display:block;width:100%;height:100%;object-fit:cover;filter:none;image-rendering:auto}.cover-sheen{position:absolute;inset:0;border:1px solid #ffffff13;border-radius:inherit;pointer-events:none}
 .hero-copy{text-align:center;max-width:540px;width:100%;margin-top:25px}.hero-copy>span{display:block;font-size:10px;color:#9a9fa8;line-height:1.4;margin-bottom:8px}.hero-copy h1{font-size:clamp(20px,2.1vw,30px);line-height:1.19;letter-spacing:-.75px;font-weight:650;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin:0}.hero-copy p{font-size:13px;color:#a6adba;line-height:1.5;margin:9px 0 0;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}.artwork-content>.primary{margin-top:23px;background:#efcfb6;color:#27211d;border-color:transparent}
-.listening-stage[data-lyrics=false] .lyrics-pane,.listening-stage[data-queue=false] .queue-pane{visibility:hidden;pointer-events:none;opacity:0;border:0}
+.listening-stage[data-lyrics-mode=hidden] .lyrics-pane,.listening-stage[data-queue-mode=hidden] .queue-pane{visibility:hidden;pointer-events:none;opacity:0;border:0}
 .lyrics-pane{view-transition-name:lyrics-pane}.queue-pane{view-transition-name:queue-pane}
 ::view-transition-group(artwork),::view-transition-group(lyrics-pane),::view-transition-group(queue-pane){animation-duration:300ms;animation-timing-function:cubic-bezier(.2,.8,.2,1)}
 ::view-transition-old(lyrics-pane),::view-transition-old(queue-pane){animation:panel-out 170ms ease-out both}::view-transition-new(lyrics-pane),::view-transition-new(queue-pane){animation:panel-in 240ms cubic-bezier(.2,.8,.2,1) both}
@@ -64,3 +64,54 @@ body.catalog-view .listening-stage,body.catalog-view .playback-dock{display:none
 .stage-track strong{font-size:13px}.stage-track small{font-size:11px}.stage-pane h2{font-size:17px}@media(max-width:1100px){.stage-track strong{font-size:12px}.stage-track small{font-size:10px}}
 
 .lyric-line{opacity:.72}.lyric-line.is-past{opacity:.49}.lyric-line.is-active{opacity:1}.stage-tracks::-webkit-scrollbar-button,.stage-lines::-webkit-scrollbar-button{display:none}
+
+/* The cover is sized from its own available space, including the empty-state CTA. */
+body.native-material.glass{background:linear-gradient(145deg,#141a2352,#10151d80)}
+body.glass:not(.native-material){background:radial-gradient(ellipse at 12% 10%,#38434c55,transparent 65%),#131922}
+.ambient-light{opacity:.34}
+.ambient-light:before,.ambient-light:after{filter:blur(42px);background:radial-gradient(ellipse,rgb(var(--ambient,168 101 65) / .85),transparent 68%)}
+.glass .topbar{background:linear-gradient(115deg,#ffffff12,#ffffff05);backdrop-filter:blur(30px) saturate(160%);box-shadow:inset 0 1px #ffffff20,0 8px 30px #0002}
+.brand-icon{border-radius:8px}
+.glass .stage-pane,.glass .playback-dock{background:linear-gradient(135deg,#ffffff10,#ffffff04);backdrop-filter:blur(30px) saturate(145%)}
+.listening-stage{grid-template-rows:38px minmax(0,1fr);row-gap:16px}
+.stage-search{grid-column:2;grid-row:1;width:min(100%,440px);justify-self:center;min-width:0;height:38px;z-index:1;overflow:hidden}
+.stage-search span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.stage-search kbd{flex:none}
+.lyrics-pane{grid-column:1;grid-row:1 / -1}.queue-pane{grid-column:3;grid-row:1 / -1}
+.artwork-pane{grid-column:2;grid-row:2;padding:0;overflow:visible}
+.artwork-content{container-type:size;padding:0;justify-content:center;min-height:0}
+.cover-frame{width:min(100cqw,440px,max(90px,calc(100cqh - 122px)))}
+.artwork-content:has(#hero-start:not([hidden])) .cover-frame{width:min(100cqw,440px,max(90px,calc(100cqh - 192px)))}
+.hero-copy{margin-top:16px;flex:none}.hero-copy h1{font-size:clamp(20px,2vw,28px)}
+.hero-copy p{margin-top:6px}.artwork-content>.primary{margin-top:16px;min-height:40px;flex:none;padding:9px 18px;line-height:20px}
+.listening-stage[data-focus=lyrics] .artwork-pane,.listening-stage[data-focus=queue] .artwork-pane{display:none}
+.stage-pane[data-placement=center]{grid-column:2;grid-row:2;width:100%;max-width:780px;justify-self:center}
+.lyrics-pane[data-placement=center]{container-type:size;border:0;background:transparent;backdrop-filter:none;box-shadow:none;border-radius:18px}
+.lyrics-pane[data-placement=center]>header{padding:0 20px 8px;align-items:center}.lyrics-pane[data-placement=center] h2{display:none}
+.lyrics-pane[data-placement=center]>footer{text-align:center;background:none;border:0}
+.lyrics-pane[data-placement=center] .stage-lines{padding:max(0px,calc((100cqh - 150px)/2)) 25px;mask-image:linear-gradient(transparent,#000 15%,#000 85%,transparent);scrollbar-width:none}
+.lyrics-pane[data-placement=center] .lyric-line{text-align:center;font-size:clamp(26px,3.3vw,48px);font-weight:650;letter-spacing:-1.1px;line-height:1.25;padding:17px 6px;transform-origin:center;opacity:.28;transition:opacity 450ms ease-out,transform 550ms cubic-bezier(.16,1,.3,1);text-wrap:balance}
+.lyrics-pane[data-placement=center] .lyric-line.is-past{opacity:.18}
+.lyrics-pane[data-placement=center] .lyric-line.is-active{opacity:1;transform:scale(1.035);color:#fff}
+.lyrics-pane[data-placement=center] .stage-empty{text-align:center;padding-top:0}
+.lyrics-pane[data-placement=center] .plain-lyrics{text-align:center}
+.queue-pane[data-placement=center]{max-width:680px}
+.queue-pane[data-placement=center] .stage-track{min-height:76px}.queue-pane[data-placement=center] .stage-track img{width:48px;height:48px}
+.tv-toolbar{position:absolute;inset:82px 17px auto;display:flex;align-items:center;gap:12px;height:40px}
+.tv-toolbar>div{flex:1;min-width:0}.tv-toolbar strong{font-size:15px;display:block}.tv-toolbar span{font-size:11px;color:#aab4c3;display:block;margin-top:3px}
+.tv-toolbar .secondary{min-height:34px;padding:7px 12px;font-size:11px;border-radius:12px;background:#ffffff0c}
+.fullscreen .tv-toolbar{display:none}
+.topbar,.stage-pane,.playback-dock,.stage-search{transition:background-color 180ms ease-out,border-color 180ms ease-out}
+button:active:not(:disabled){transform:scale(.97);transition:transform 90ms ease-out}
+body:not(.booting) .topbar{animation:boot-bar 460ms cubic-bezier(.16,1,.3,1) both}
+body:not(.booting) .listening-stage{animation:boot-stage 620ms 50ms cubic-bezier(.16,1,.3,1) both}
+body:not(.booting) .playback-dock{animation:boot-dock 530ms 100ms cubic-bezier(.16,1,.3,1) both}
+.booting .topbar,.booting .listening-stage,.booting .playback-dock{opacity:0}
+@keyframes boot-bar{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+@keyframes boot-stage{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes boot-dock{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+::view-transition-group(artwork),::view-transition-group(lyrics-pane),::view-transition-group(queue-pane){animation-duration:440ms;animation-timing-function:cubic-bezier(.16,1,.3,1)}
+::view-transition-new(lyrics-pane),::view-transition-new(queue-pane){animation-duration:440ms}
+@media(max-height:720px){.listening-stage{grid-template-rows:34px minmax(0,1fr);row-gap:12px}.stage-search{height:34px}.hero-copy{margin-top:12px}.hero-copy h1{font-size:20px}.artwork-content{padding:0}.hero-copy p{font-size:11px}.artwork-content>.primary{margin-top:12px;min-height:36px;padding-block:7px}.cover-frame{width:min(100cqw,440px,max(80px,calc(100cqh - 100px)))}.artwork-content:has(#hero-start:not([hidden])) .cover-frame{width:min(100cqw,440px,max(80px,calc(100cqh - 158px)))}}
+@media(max-width:950px){.brand span{display:none}.topbar{gap:8px}.listening-stage{column-gap:12px}.stage-search kbd{display:none}.tv-toolbar span{max-width:340px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.stage-pane[data-placement=center] .lyric-line{font-size:29px}}
+@media(prefers-reduced-motion:reduce){body:not(.booting) .topbar,body:not(.booting) .listening-stage,body:not(.booting) .playback-dock{animation:none}.booting .topbar,.booting .listening-stage,.booting .playback-dock{opacity:1}.lyric-line{transform:none!important;transition:opacity 120ms ease-out!important}button:active:not(:disabled){transform:none}}
+@media(prefers-reduced-transparency:reduce){body.native-material.glass{background:#11151b}.glass .stage-pane,.glass .playback-dock,.glass .topbar{background:#1d2530;backdrop-filter:none}.lyrics-pane[data-placement=center]{background:transparent}}

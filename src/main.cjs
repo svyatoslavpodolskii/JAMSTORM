@@ -16,7 +16,7 @@ const musicSmoke = process.argv.includes('--music-mode');
 const smoke = process.argv.includes('--smoke-test') || liveSmoke;
 if (smoke) app.setPath('userData', path.join(app.getPath('temp'), 'jam-desktop-smoke'));
 if (smoke && !liveSmoke) app.disableHardwareAcceleration();
-let window, music, player, jam, room, tunnel, addons, panel={queue:true,lyrics:true}, selectedTab = 'music', mode = 'music';
+let window, music, player, jam, room, tunnel, addons, panel={queue:'hidden',lyrics:'hidden'}, selectedTab = 'music', mode = 'music';
 const nativeMaterialSupported=process.platform==='win32'&&Number(require('node:os').release().split('.')[2])>=22621;
 let material=nativeMaterialSupported?'mica':'none',ambientTrack='',ambientBusy=false,lastLevelAt=0,visualsEnabled=true,lastAudioLevel=0;
 const tvUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Cobalt/27.lts.3.1040976-gold (unlike Gecko) v8/13.8.258.54-jit gles Starboard/18, JamDesktop_DESKTOP_x8664_2026/0.2.0 (JamDesktop, Windows) local.jam.desktop/0.2.0';
@@ -25,8 +25,8 @@ const isLocalPage = require('./local-page.cjs').localPageGuard(path.join(__dirna
 const remoteAllowed = value => { try { const u = new URL(value); return u.protocol === 'https:' && (['music.youtube.com', 'accounts.google.com', 'consent.youtube.com', 'consent.google.com'].includes(u.hostname) || u.hostname === 'www.youtube.com' && (u.pathname === '/tv' || u.pathname.startsWith('/tv/'))); } catch { return false; } };
 function layout() {
   if(!window||!music)return;
-  const [width,height]=window.getContentSize(),top=window.isFullScreen()?0:72;
-  music.setBounds({x:0,y:top,width,height:Math.max(0,height-top)});
+  const [width,height]=window.getContentSize(),full=window.isFullScreen(),tv=mode==='tv'&&selectedTab==='music',top=full?0:tv?132:72,inset=full?0:tv?16:0;
+  music.setBounds({x:inset,y:top,width:width-inset*2,height:Math.max(0,height-top-inset)});
   music.setVisible(require('./ui/surface-layout.js')(selectedTab,mode).remoteVisible);
 }
 function send(channel,value){if(window&&!window.isDestroyed())window.webContents.send(channel,value);}
@@ -91,6 +91,7 @@ app.whenReady().then(async () => {
   music.webContents.on('did-finish-load', () => {
     music.webContents.send('visual:enabled',visualsEnabled);layout();send('player:state', { phase: 'ready' });
 
+    if(music.webContents.getURL().startsWith('https://www.youtube.com/tv'))music.webContents.insertCSS(fs.readFileSync(path.join(__dirname,'tv-theme.css'),'utf8')).catch(()=>{});
     if(music.webContents.getURL().startsWith('https://music.youtube.com/'))music.webContents.insertCSS(fs.readFileSync(path.join(__dirname,'music-theme.css'),'utf8')).catch(()=>{});
   });
   music.webContents.on('did-fail-load', (_e, code, _description, _url, mainFrame) => {
@@ -142,7 +143,7 @@ app.whenReady().then(async () => {
     lastAudioLevel=Math.max(lastAudioLevel,value);lastLevelAt=performance.now();send('app:level',value);
   });
 
-  handle('app:panel',value=>{if(value===null)panel={queue:false,lyrics:false};else if(['queue','lyrics'].includes(value))panel[value]=!panel[value];else throw new Error('Unknown panel');selectedTab='music';layout();send('app:panel',panel);return panel;});
+  handle('app:panel',value=>{if(value===null)panel={queue:'hidden',lyrics:'hidden'};else if(['queue','lyrics'].includes(value))panel=require('./ui/panel-modes.js').nextPanel(panel,value);else if(value&&['queue','lyrics'].includes(value.kind)&&['hidden','side','center'].includes(value.placement)){panel={...panel,[value.kind]:value.placement};if(value.placement==='center'&&panel[value.kind==='queue'?'lyrics':'queue']==='center')panel[value.kind==='queue'?'lyrics':'queue']='hidden';}else throw new Error('Unknown panel');selectedTab='music';layout();send('app:panel',panel);return panel;});
   handle('app:panels',()=>panel);
   handle('addons:state', () => addons.view());
   handle('addons:set', (key,value) => addons.set(key,value));
@@ -163,7 +164,7 @@ app.whenReady().then(async () => {
   });
   handle('jam:copy', () => { if (!jam.state.invite) throw new Error('Сначала создай Jam'); clipboard.writeText(jam.state.invite); });
   handle('jam:qr', () => { if (!jam.state.invite) throw new Error('Сначала создай Jam'); return QRCode.toDataURL(jam.state.invite, { errorCorrectionLevel: 'M', margin: 3, width: 256 }); });
-  handle('app:tab', tab => { if (!['music','catalog','jam','invite','settings'].includes(tab)) throw new Error('Unknown tab'); selectedTab = tab; layout();if(tab==='catalog'||tab==='music'&&mode==='tv')music.webContents.focus();else window.webContents.focus(); });
+  handle('app:tab', async tab => { if (!['music','catalog','jam','invite','settings'].includes(tab)) throw new Error('Unknown tab'); if(tab==='catalog'&&mode==='tv'){await applyMode('music');send('app:mode',mode);selectedTab=tab;layout();if(!smoke||liveSmoke)await music.webContents.loadURL('https://music.youtube.com');}selectedTab = tab; layout();if(tab==='catalog'||tab==='music'&&mode==='tv')music.webContents.focus();else window.webContents.focus();return {mode}; });
   handle('app:mode', async value => { if (!['tv', 'music'].includes(value)) throw new Error('Unknown player'); await applyMode(value); selectedTab = 'music'; layout(); send('app:mode',mode);await music.webContents.loadURL(home()); });
   handle('room:start', async () => { if (jam.state.role === 'guest') throw new Error('Для браузерной комнаты хостом должен быть этот ПК'); if (jam.state.role !== 'host') { await jam.host(command => player.call(command)); } return room.start(); });
   handle('room:state', roomView);
@@ -194,7 +195,7 @@ app.whenReady().then(async () => {
   await window.loadFile(path.join(__dirname, 'ui/index.html')); layout();
   if (smoke) {
     selectedTab = 'jam'; layout();
-    await window.webContents.executeJavaScript(`tab('jam')`);
+    await window.webContents.executeJavaScript(`tab('jam');Promise.all(document.getAnimations().filter(a=>a.animationName?.startsWith('boot-')).map(a=>a.finished.catch(()=>{})))`);
     const result = await window.webContents.executeJavaScript(`({ title: document.title, bridge: typeof window.jam?.join, heading: document.querySelector('h1')?.textContent, inputs: document.querySelectorAll('input,textarea').length })`);
     const scroll = await window.webContents.executeJavaScript(`(() => { const main=document.querySelector('main'),bar=document.querySelector('.topbar'),details=document.createElement('div');details.style.height='1500px';main.append(details);main.scrollTop=600;const result={barTop:bar.getBoundingClientRect().top,scrolled:main.scrollTop,bodyScroll:document.scrollingElement.scrollTop};main.scrollTop=0;details.remove();return result;})()`);
     if (scroll.barTop !== 10 || scroll.bodyScroll !== 0 || scroll.scrolled <= 0) throw new Error('Fixed topbar regression');
@@ -204,6 +205,8 @@ app.whenReady().then(async () => {
       await applyMode('tv');selectedTab='music';layout();send('app:mode','tv');await window.webContents.executeJavaScript(`tab('music')`);
       const tvExclusive=await window.webContents.executeJavaScript(`document.querySelector('#listening-stage').hidden&&document.querySelector('#playback-dock').hidden&&document.querySelector('#overlay-queue').disabled`);
       if(!music.getVisible()||!tvExclusive)throw new Error('TV overlays the local scene');
+      if(music.getBounds().y!==132)throw new Error('TV frame toolbar overlaps the native page');
+      await window.webContents.executeJavaScript(`tab('catalog')`);if(mode!=='music'||player.mode!=='music'||!music.getVisible())throw new Error('Catalog from TV did not switch to Music');
       await applyMode('music');send('app:mode','music');await window.webContents.executeJavaScript(`tab('music')`);
       if(music.getVisible())throw new Error('Native Music unexpectedly overlays the listening scene');
       await window.webContents.executeJavaScript(`tab('catalog')`);if(!music.getVisible())throw new Error('Catalog is not visible');
@@ -239,6 +242,16 @@ app.whenReady().then(async () => {
         }
         if (!remote.app || remote.require !== 'undefined' || remote.bridge !== 'undefined') { clearTimeout(timeout); return app.exit(1); }
         music.webContents.setAudioMuted(true);
+        if(mode==='tv'){
+          send('app:mode',mode);await window.webContents.executeJavaScript(`tab('music')`);
+          await new Promise(resolve=>setTimeout(resolve,700));
+          fs.writeFileSync(path.join(dir,'tv-frame-0.5.1.png'),(await window.capturePage()).toPNG());
+          const frame=await window.webContents.executeJavaScript(`({toolbar:!document.querySelector('#tv-toolbar').hidden,scene:document.querySelector('#listening-stage').hidden})`);
+          if(!frame.toolbar||!frame.scene||music.getBounds().y!==132)throw new Error('Live TV frame overlaps');
+          await window.webContents.executeJavaScript(`tab('catalog')`);
+          if(mode!=='music'||!music.webContents.getURL().startsWith('https://music.youtube.com'))throw new Error('Live TV-to-Music catalog failed');
+          console.log('TV_CATALOG_SWITCH',JSON.stringify({mode,url:music.webContents.getURL(),frame}));
+        }
         const bootstrap=await window.webContents.executeJavaScript(`window.jam.playTrack('5NV6Rdv1a3I')`);if(!bootstrap.ok)throw new Error('Search play entry failed: '+bootstrap.error);
         await player.select({ id: 'smoke', videoId: '5NV6Rdv1a3I' }, false);
         await new Promise(resolve => setTimeout(resolve, 3000));
@@ -263,6 +276,7 @@ app.whenReady().then(async () => {
         if(!lyricResult.lines.length)throw new Error('No synced lyrics for reference track');
         await new Promise(resolve=>setTimeout(resolve,2000));
         await window.webContents.executeJavaScript(`tab('music')`);
+        panel={lyrics:'side',queue:'side'};send('app:panel',panel);
         await new Promise(resolve=>setTimeout(resolve,1600));
         const panelState=await window.webContents.executeJavaScript(`({lines:document.querySelectorAll('#stage-lines .lyric-line').length,queue:document.querySelectorAll('#stage-tracks .stage-track').length})`);
         if(!panelState.lines)throw new Error('Unified lyrics failed: '+JSON.stringify(panelState));

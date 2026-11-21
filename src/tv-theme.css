@@ -1,0 +1,7 @@
+/* Keep Leanback navigation and player layout intact; style the TV surface itself. */
+html,body{background:#101319!important}
+body{font-family:"Segoe UI Variable","Segoe UI",sans-serif!important}
+ytlr-app{--yt-spec-base-background:#101319;--yt-spec-brand-background-primary:#101319}
+ytlr-guide,ytlr-guide-renderer{background:linear-gradient(120deg,#252a34ed,#151921eb)!important}
+ytlr-search,ytlr-settings{background:#171c25!important}
+:focus-visible{outline-color:#ffd4b8!important}

@@ -13,7 +13,7 @@ const handle=(key,fn)=>ipcMain.handle(key,async(_event,...args)=>{try{return {ok
 handle('app:material',value=>({material:value,supported:true}));handle('app:visuals',()=>true);
 handle('jam:state',()=>state);handle('app:queue',()=>state.queue);handle('app:panels',()=>panels);
 handle('app:search',()=>fixtures.map(([videoId,title,artist])=>({videoId,title,artist})));handle('app:play-track',()=>state.queue);
-handle('app:tab',()=>{});handle('app:panel',key=>(panels[key]=!panels[key],panels));
+handle('app:tab',()=>({mode:'music'}));handle('app:panel',key=>panels=require('../src/ui/panel-modes.js').nextPanel(panels,key));
 handle('addons:state',()=>({adblock:false,sponsorblock:false}));handle('addons:set',()=>{});
 handle('room:state',()=>room);handle('room:start',()=>room={active:true,url:'http://192.168.1.10:45123/#review-only',guests:2});
 handle('room:qr',()=>QRCode.toDataURL(room.url));handle('room:stop',()=>room={active:false});handle('room:copy',()=>{});
@@ -26,6 +26,9 @@ async function make(file,width,height){
 async function shot(win,name){await new Promise(resolve=>setTimeout(resolve,300));fs.writeFileSync(path.join(out,name+'.png'),(await win.webContents.capturePage(undefined,{stayHidden:true})).toPNG());}
 app.whenReady().then(async()=>{
  const win=await make('index.html',1320,880);
+ await new Promise(resolve=>setTimeout(resolve,120));
+ const bootMotion=await win.webContents.executeJavaScript(`document.getAnimations().filter(a=>a.playState==='running').map(a=>a.animationName||'')`);
+ if(!bootMotion.includes('boot-stage')||!bootMotion.includes('boot-bar'))throw new Error('Startup animation did not play: '+bootMotion);
  await win.webContents.executeJavaScript(`tab('jam')`);await shot(win,'01-empty-queue');
  state={...state,queue:{...state.queue,items:fixtures.map(([videoId,title,artist],index)=>({id:String(index+1),videoId,title,artist,current:index===0}))}};
  await win.webContents.executeJavaScript(`render(${JSON.stringify(state)})`);await shot(win,'02-queue');
@@ -51,12 +54,45 @@ app.whenReady().then(async()=>{
  win.setSize(860,700);await shot(win,'stage-small');
  const bounds=await win.webContents.executeJavaScript(`(()=>{const ids=['lyrics-pane','artwork-pane','queue-pane'];return ids.map(id=>{const r=document.getElementById(id).getBoundingClientRect();return {id,left:r.left,right:r.right,top:r.top,bottom:r.bottom};});})()`);
  if(bounds[0].right>bounds[1].left+1||bounds[1].right>bounds[2].left+1||bounds[2].right>860)throw new Error('Panels overlap: '+JSON.stringify(bounds));
+
+ // Reproduce the reported short-window clipping, including the first-use empty state.
+ const geometryFailures=[];let cases=0;
+ for(const [width,height] of [[1163,774],[1163,700],[860,620],[1320,620],[960,650]]){
+  win.setSize(width,height);
+  for(const empty of [true,false]){
+   const data=empty?{...state,queue:{...state.queue,items:[]}}:state;
+   await win.webContents.executeJavaScript(`render(${JSON.stringify(data)})`);
+   for(const value of [{lyrics:'side',queue:'side'},{lyrics:'hidden',queue:'hidden'},{lyrics:'center',queue:'side'},{lyrics:'side',queue:'center'}]){
+    await win.webContents.executeJavaScript(`window.listening.panels(${JSON.stringify(value)},false)`);
+    await new Promise(resolve=>setTimeout(resolve,80));cases++;
+    const result=await win.webContents.executeJavaScript(`(()=>{
+     const box=id=>{const e=document.getElementById(id),r=e.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height};};
+     const search=box('stage-search'),art=box('cover-frame'),start=box('hero-start'),dock=box('playback-dock'),stage=box('listening-stage');
+     const focused=document.querySelector('#listening-stage').dataset.focus;
+     const hit=document.elementFromPoint((search.left+search.right)/2,(search.top+search.bottom)/2);
+     return {search,art,start,dock,stage,focused,searchClickable:!!hit?.closest('#stage-search'),startVisible:document.getElementById('hero-start').hidden||focused!=='artwork'||start.bottom<=stage.bottom+1};
+    })()`);
+    if(!result.searchClickable||!result.startVisible||result.search.top<result.stage.top-1||result.stage.bottom>result.dock.top||result.focused==='artwork'&&(result.art.top<result.search.bottom||result.art.bottom>result.stage.bottom))geometryFailures.push({width,height,empty,value,result});
+   }
+  }
+ }
+ if(geometryFailures.length)throw new Error('Short-window clipping: '+JSON.stringify(geometryFailures));
+ win.setSize(1163,774);await win.webContents.executeJavaScript(`render({...${JSON.stringify(state)},queue:{...${JSON.stringify(state.queue)},items:[]}});window.listening.panels({lyrics:'side',queue:'side'},false)`);await shot(win,'empty-short-fixed');
+ await win.webContents.executeJavaScript(`render(${JSON.stringify(state)});window.listening.panels({lyrics:'center',queue:'hidden'},false)`);await new Promise(resolve=>setTimeout(resolve,900));await shot(win,'lyrics-center');
+ const centered=await win.webContents.executeJavaScript(`(()=>{const a=document.querySelector('#stage-lines .is-active').getBoundingClientRect(),b=document.querySelector('#stage-lines').getBoundingClientRect();const p=document.querySelector('#lyrics-pane').getBoundingClientRect();if(b.bottom>p.bottom||b.top<p.top)throw new Error('Lyrics scroll container exceeds its pane');return Math.abs((a.top+a.bottom-b.top-b.bottom)/2);})()`);if(centered>10)throw new Error('Lyric line is not centered: '+centered);
+ await win.webContents.executeJavaScript(`window.listening.panels({lyrics:'hidden',queue:'center'},false)`);await shot(win,'queue-center');
+ await win.webContents.executeJavaScript(`window.listening.panels({lyrics:'hidden',queue:'hidden'},false)`);await shot(win,'focus-short');
+ // Both startup motion and actual lyric changes must produce animations, not just classes.
+ await win.webContents.executeJavaScript(`window.listening.panels({lyrics:'center',queue:'hidden'},false);render(${JSON.stringify({...state,queue:{...state.queue,clock:{...state.queue.clock,position:45000,playing:false}}})})`);
+ await new Promise(resolve=>setTimeout(resolve,60));
+ const motion=await win.webContents.executeJavaScript(`({active:document.querySelector('#stage-lines .is-active')?.textContent,animations:document.getAnimations().filter(a=>a.playState==='running').length,boot:!![...document.styleSheets].flatMap(s=>[...s.cssRules]).find(r=>r.name==='boot-stage')})`);
+ if(motion.animations<1||!motion.boot)throw new Error('No visible animation '+JSON.stringify(motion));
  await win.webContents.executeJavaScript(`window.listening.mode('tv')`);const tv=await win.webContents.executeJavaScript(`({stage:document.querySelector('#listening-stage').hidden,dock:document.querySelector('#playback-dock').hidden,disabled:document.querySelector('#overlay-lyrics').disabled})`);
  if(!tv.stage||!tv.dock||!tv.disabled)throw new Error('TV overlaps local stage');
  await shot(win,'tv-exclusive');await win.webContents.executeJavaScript(`window.listening.mode('music')`);
  await win.webContents.executeJavaScript(`document.querySelector('#stage-search').click();document.querySelector('#stage-query').value='test';document.querySelector('#stage-search-form').requestSubmit()`);await shot(win,'search-dialog');
  const searchCount=await win.webContents.executeJavaScript(`document.querySelectorAll('.search-result').length`);if(searchCount!==3)throw new Error('Search missing results');
  if(errors.length)throw new Error(errors.join('\n'));
- console.log('UI_REVIEW_OK',JSON.stringify({screenshots:15,toolbar:header,lyrics:lyricState}));
+ console.log('UI_REVIEW_OK',JSON.stringify({screenshots:19,resizeCases:cases,toolbar:header,lyrics:lyricState,motion,bootMotion}));
  app.exit(0);
 }).catch(error=>{console.error('UI_REVIEW_FAILED',error.stack);app.exit(1);});

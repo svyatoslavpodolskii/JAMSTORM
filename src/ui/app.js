@@ -58,7 +58,7 @@ function render(next) {
   if (state.error) message(state.error);
 }
 async function tab(value) {
-  await call(window.jam.tab(value));window.listening?.page(value);document.body.classList.toggle('player-view',value==='music'||value==='catalog');
+  const result=await call(window.jam.tab(value));if(result?.mode){$('player-mode').value=result.mode;window.listening.mode(result.mode);}window.listening?.page(value);document.body.classList.toggle('player-view',value==='music'||value==='catalog');
   for(const [id,key] of [['queue-page','jam'],['invite-page','invite'],['settings-page','settings']]) $(id).hidden=value!==key;
   document.querySelector('.intro').textContent=({jam:'Всё, что хочется услышать дальше.',invite:'Один плеер. Каждый добавляет своё.',settings:'Пусть всё будет по-твоему.'})[value]||'';
   document.querySelector('main .page-heading h1').textContent=({jam:'Твоя очередь',invite:'Вместе звучит лучше',settings:'Настройки'})[value]||'Музыка';
@@ -127,15 +127,15 @@ window.jam.onFullscreen(value=>document.body.classList.toggle('fullscreen',value
 let pollingQueue=false;
 setInterval(async()=>{if(pollingQueue)return;pollingQueue=true;try{const queue=await call(window.jam.queue());if(queue)render({...state,queue});}catch{}finally{pollingQueue=false;}},1500);
 
-function panels(value){for(const key of ['queue','lyrics'])$('overlay-'+key).setAttribute('aria-pressed',String(!!value?.[key]));}
+function panels(value){for(const key of ['queue','lyrics'])$('overlay-'+key).setAttribute('aria-pressed',String(window.panelModes.normalize(value?.[key])!=='hidden'));}
 window.jam.onPanel(panels);call(window.jam.panels()).then(panels).catch(()=>{});
 
 const reducedTransparency=matchMedia('(prefers-reduced-transparency: reduce)').matches;
-async function nativeMaterial(){const choice=localStorage.getItem('window-material')||'mica';$('window-material').value=choice;try{const result=await call(window.jam.material(glass&&!reducedTransparency?choice:'none'));document.body.classList.toggle('native-material',result.material!=='none');$('window-material').disabled=!result.supported;$('material-hint').textContent=result.supported?'Системное размытие Windows 11':'Нужна Windows 11 22H2 или новее';}catch{}}
+async function nativeMaterial(){const choice=localStorage.getItem('window-material')||'acrylic';$('window-material').value=choice;try{const result=await call(window.jam.material(glass&&!reducedTransparency?choice:'none'));document.body.classList.toggle('native-material',result.material!=='none');$('window-material').disabled=!result.supported;$('material-hint').textContent=result.supported?'Системное размытие Windows 11':'Нужна Windows 11 22H2 или новее';}catch{}}
 $('window-material').onchange=()=>{localStorage.setItem('window-material',$('window-material').value);nativeMaterial();};
 $('glass').addEventListener('click',nativeMaterial);nativeMaterial();
 let visualMotion=localStorage.getItem('ambient-sound')!=='off'&&!matchMedia('(prefers-reduced-motion: reduce)').matches;
 $('ambient-sound').checked=visualMotion;call(window.jam.visuals(visualMotion)).catch(()=>{});
 $('ambient-sound').onchange=()=>{visualMotion=$('ambient-sound').checked;localStorage.setItem('ambient-sound',visualMotion?'on':'off');call(window.jam.visuals(visualMotion)).catch(()=>{});if(!visualMotion)$('ambient-light').style.opacity='.25';};
 window.jam.onAmbient(color=>{if(Array.isArray(color)&&color.length===3&&color.every(value=>Number.isInteger(value)&&value>=0&&value<=255))document.body.style.setProperty('--ambient',color.join(' '));});
-window.jam.onLevel(level=>{if(visualMotion)$('ambient-light').style.opacity=String(.11+level*.17);});
+window.jam.onLevel(level=>{if(visualMotion)$('ambient-light').style.opacity=String(.28+level*.24);});
