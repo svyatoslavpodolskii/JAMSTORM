@@ -10,6 +10,7 @@ let state={phase:'idle',role:null,peers:0,queue:{ok:true,native:true,revision:'r
 const fixtures=[['5NV6Rdv1a3I','Get Lucky','Daft Punk'],['fLexgOxsZu0','Uptown Funk','Mark Ronson · Bruno Mars'],['kJQP7kiw5Fk','Despacito','Luis Fonsi · Daddy Yankee']];
 const windows=[];const errors=[];
 const handle=(key,fn)=>ipcMain.handle(key,async(_event,...args)=>{try{return {ok:true,value:await fn(...args)};}catch(error){return {ok:false,error:error.message};}});
+handle('app:navigation',()=>({back:true,forward:false}));handle('app:navigate',()=>({back:false,forward:true}));
 handle('app:policy',()=>({blockExplicit:true,hideExplicit:true,guestLimit:3,guestReorder:false}));handle('app:open-browser',()=>{});
 handle('app:material',value=>({material:value,supported:true}));handle('app:visuals',()=>true);
 handle('jam:state',()=>state);handle('app:queue',()=>state.queue);handle('app:panels',()=>panels);
@@ -31,7 +32,7 @@ app.whenReady().then(async()=>{
  await new Promise(resolve=>setTimeout(resolve,120));
  const bootMotion=await win.webContents.executeJavaScript(`document.getAnimations().filter(a=>a.playState==='running').map(a=>a.animationName||'')`);
  await shot(win,'boot-vortex');
- if(!bootMotion.includes('boot-stage')||!bootMotion.includes('boot-bar'))throw new Error('Startup animation did not play: '+bootMotion);
+ if(!bootMotion.includes('fire-spiral')||!bootMotion.includes('boot-mark'))throw new Error('Startup animation did not play: '+bootMotion);
  await new Promise(resolve=>setTimeout(resolve,1400));await win.webContents.executeJavaScript(`tab('jam')`);await shot(win,'01-empty-queue');
  state={...state,queue:{...state.queue,items:fixtures.map(([videoId,title,artist],index)=>({id:String(index+1),videoId,title,artist,current:index===0}))}};
  await win.webContents.executeJavaScript(`render(${JSON.stringify(state)})`);await shot(win,'02-queue');
@@ -102,6 +103,11 @@ app.whenReady().then(async()=>{
  await new Promise(resolve=>setTimeout(resolve,800));await shot(win,'vinyl');
  const spinning=await win.webContents.executeJavaScript(`({round:document.body.classList.contains('vinyl'),label:document.body.classList.contains('vinyl-paper'),rate:document.querySelector('#record-spin').getAnimations()[0]?.playbackRate})`);
  if(!spinning.round||!spinning.label||!spinning.rate)throw new Error('Vinyl failed '+JSON.stringify(spinning));
+ const paperHit=await win.webContents.executeJavaScript(`(()=>{const el=document.querySelector('#paper-toggle'),r=el.getBoundingClientRect();return [r.left+3,r.right-3].every(x=>document.elementFromPoint(x,r.top+r.height/2)?.closest('#paper-toggle'));})()`);if(!paperHit)throw new Error('Paper-label control is clipped');
+ await win.webContents.executeJavaScript(`window.listening.render({...${JSON.stringify(state.queue)},clock:{...${JSON.stringify(state.queue.clock)},playing:false}})`);await new Promise(resolve=>setTimeout(resolve,450));
+ await win.webContents.executeJavaScript(`window.listening.render({...${JSON.stringify(state.queue)},clock:{...${JSON.stringify(state.queue.clock)},playing:true}})`);await new Promise(resolve=>setTimeout(resolve,50));
+ const morph=await win.webContents.executeJavaScript(`document.querySelector('#dock-play').getAnimations({subtree:true}).some(a=>a.transitionProperty==='d')`);if(!morph)throw new Error('Play/pause SVG does not morph');
+
  await win.webContents.executeJavaScript(`(()=>{const rows=document.querySelectorAll('#stage-tracks .stage-track'),data=new DataTransfer();rows[2].dispatchEvent(new DragEvent('dragstart',{dataTransfer:data,bubbles:true}));rows[1].dispatchEvent(new DragEvent('drop',{dataTransfer:data,bubbles:true}));})()`);
  await new Promise(resolve=>setTimeout(resolve,100));if(state.queue.items[1].id!=='3')throw new Error('Drag drop did not move native queue fixture');
  await win.webContents.executeJavaScript(`document.body.classList.add('fullscreen')`);await shot(win,'fullscreen-player');

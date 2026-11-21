@@ -16,8 +16,8 @@
   }
   function updatePage(){
     const surface=window.surfaceLayout(page,mode);stage.hidden=!surface.sceneVisible;dock.hidden=!surface.dockVisible;
-    document.body.classList.toggle('catalog-view',page==='catalog'||mode==='tv'&&page==='music');
-    el('tv-toolbar').hidden=!(mode==='tv'&&page==='music');
+    document.body.classList.toggle('remote-view',surface.remoteVisible);document.body.classList.toggle('catalog-view',page==='catalog'||mode==='tv'&&page==='music');
+    
     for(const key of ['lyrics','queue'])el('overlay-'+key).disabled=mode==='tv'||page!=='music'||key==='lyrics'&&lyricAvailable===false;
     document.body.classList.toggle('listening-view',page==='music'&&mode!=='tv');
   }
@@ -86,7 +86,7 @@
     el('dock-title').textContent=window.artwork.title(now)||'Пока тихо';el('dock-artist').textContent=now?.artist||'Выбери первую песню';
     window.playerEffects.update(now,clock,item=>image(el('stage-cover'),item));image(el('dock-cover'),now);
     if(now?.videoId!==trackKey){trackKey=now?.videoId;manualUntil=0;lyricAvailable=null;}
-    el('dock-play').innerHTML=clock.playing?pauseIcon:playIcon;el('dock-play').setAttribute('aria-label',clock.playing?'Пауза':'Воспроизвести');
+    el('dock-play').dataset.playing=String(!!clock.playing);el('dock-play').setAttribute('aria-label',clock.playing?'Пауза':'Воспроизвести');
     el('dock-play').disabled=!now;el('dock-seek').disabled=!now||!clock.duration;
     const index=items.findIndex(row=>row.current);el('dock-previous').disabled=index<=0;el('dock-next').disabled=index<0||index>=items.length-1;
     el('stage-count').textContent=String(items.length);el('dock-duration').textContent=time(clock.duration);renderRows(items);loadLyrics();tick();
@@ -109,7 +109,7 @@
     }catch(error){el('search-hint').textContent=error.message;}finally{searching=false;el('stage-search-submit').disabled=false;}
   };
   for(const key of ['lyrics','queue'])el('close-'+key).onclick=()=>{const next={...panels,[key]:'hidden'};setPanels(next);window.jam.panel({kind:key,placement:'hidden'}).catch(fail);};
-  el('tv-music').onclick=()=>tab('catalog').catch(fail);el('tv-reload').onclick=()=>call(window.jam.retry()).catch(fail);
+  
   el('queue-all').onclick=()=>tab('jam').catch(fail);el('dock-invite').onclick=()=>el('invite-tab').click();
   el('dock-play').onclick=()=>{const now=current();if(now)command('PLAY',{item:now.id,videoId:now.videoId,playing:!clock.playing});};
   for(const [id,op] of [['dock-previous','SKIP_PREVIOUS'],['dock-next','SKIP_NEXT']])el(id).onclick=()=>command(op,{});
@@ -124,6 +124,6 @@
   }
   new ResizeObserver(()=>{if(panels.lyrics!=='hidden'){highlight=-2;requestAnimationFrame(tick);}}).observe(stage);
   window.jam.onPanel(value=>{peekState=null;setPanels(value);});call(window.jam.panels()).then(value=>setPanels(value,false)).catch(fail);
-  requestAnimationFrame(()=>requestAnimationFrame(()=>document.body.classList.remove('booting')));setTimeout(()=>{el('boot-screen').classList.add('finished');setTimeout(()=>el('boot-screen').hidden=true,400);},reduced?0:1150);
+  setTimeout(()=>{document.body.classList.remove('booting','intro-running');el('boot-screen').classList.add('finished');setTimeout(()=>el('boot-screen').hidden=true,500);},reduced?0:1550);
   window.listening={render,drag:wireDrag,search:openSearch,page:value=>{page=value;updatePage();},mode:value=>{mode=value;updatePage();},panels:setPanels};updatePage();setInterval(tick,100);
 })();

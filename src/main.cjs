@@ -26,7 +26,7 @@ const isLocalPage = require('./local-page.cjs').localPageGuard(path.join(__dirna
 const remoteAllowed = value => { try { const u = new URL(value); return u.protocol === 'https:' && (['music.youtube.com', 'accounts.google.com', 'consent.youtube.com', 'consent.google.com'].includes(u.hostname) || u.hostname === 'www.youtube.com' && (u.pathname === '/tv' || u.pathname.startsWith('/tv/'))); } catch { return false; } };
 function layout() {
   if(!window||!music)return;
-  const [width,height]=window.getContentSize(),full=window.isFullScreen(),tv=mode==='tv'&&selectedTab==='music',top=full?48:tv?132:72,inset=full?0:tv?16:0;
+  const [width,height]=window.getContentSize(),full=window.isFullScreen(),tv=mode==='tv'&&selectedTab==='music',top=full?48:72,inset=0;
   music.setBounds({x:inset,y:top,width:width-inset*2,height:Math.max(0,height-top-inset)});
   music.setVisible(require('./ui/surface-layout.js')(selectedTab,mode).remoteVisible);
 }
@@ -112,6 +112,10 @@ app.whenReady().then(async () => {
   const handle = (name, fn) => ipcMain.handle(name, async (event, ...args) => {
     try { guard(event);return { ok: true, value: await fn(...args) }; } catch (e) { return { ok: false, error: e?.message||'Плеер ещё загружается. Попробуй ещё раз.' }; }
   });
+  const navigationState=()=>({back:music.webContents.navigationHistory.canGoBack(),forward:music.webContents.navigationHistory.canGoForward()});
+  for(const event of ['did-navigate','did-navigate-in-page','did-stop-loading'])music.webContents.on(event,()=>send('app:navigation',navigationState()));
+  handle('app:navigation',navigationState);
+  handle('app:navigate',async action=>{const history=music.webContents.navigationHistory;if(action==='back'&&history.canGoBack())history.goBack();else if(action==='forward'&&history.canGoForward())history.goForward();else if(action==='home')await music.webContents.loadURL(home());else if(!['back','forward'].includes(action))throw Error('Unknown navigation action');return navigationState();});
   function controlledCommand(command,context={}){if(['SNAPSHOT','SYNC'].includes(command.op))return player.call(command);return policy.run(command,context.actor,cmd=>player.call(cmd),()=>player.call({op:'SNAPSHOT'}),id=>player.native.metadata(id));}
   handle('app:policy',value=>{if(value){policy.set(value);music.webContents.send('filter:enabled',policy.settings.blockExplicit);}return policy.settings;});
   handle('jam:state', () => jam.view());
@@ -124,7 +128,7 @@ app.whenReady().then(async () => {
     if(mode!=='music')throw new Error('Для поиска переключи плеер на Music');
     await policy.verify(id,id=>player.native.metadata(id));
     let q=await player.call({op:'SNAPSHOT'}),item=q.items.find(row=>row.videoId===id);
-    if(!q.native||!q.items.length){await player.select({id:'loading',videoId:id},false);await player.ready(id);q=await player.call({op:'SNAPSHOT'});item=q.items.find(row=>row.videoId===id);if(!item)throw new Error('Очередь ещё загружается. Попробуй включить песню ещё раз.');q=await player.call({op:'PLAY',item:item.id,videoId:id,playing:true});}
+    if(!q.native||!q.items.length){await player.select({id:'loading',videoId:id},false);await player.ready(id);for(let attempt=0;attempt<80;attempt++){q=await player.call({op:'SNAPSHOT'});item=q.items.find(row=>row.videoId===id);if(item)break;await new Promise(resolve=>setTimeout(resolve,150));}if(!item)throw new Error('Очередь ещё загружается. Попробуй включить песню ещё раз.');q=await player.call({op:'PLAY',item:item.id,videoId:id,playing:true});}
     else{if(!item){q=await player.call({op:'ADD',videoId:id});item=q.items.find(row=>row.videoId===id);}if(item)q=await player.call({op:'PLAY',item:item.id,videoId:id,playing:true});}
     if(!q.ok)throw new Error(q.error);selectedTab='music';layout();return q;
   });
@@ -164,8 +168,8 @@ app.whenReady().then(async () => {
   });
   handle('jam:copy', () => { if (!jam.state.invite) throw new Error('Сначала создай Jam'); clipboard.writeText(jam.state.invite); });
   handle('jam:qr', () => { if (!jam.state.invite) throw new Error('Сначала создай Jam'); return QRCode.toDataURL(jam.state.invite, { errorCorrectionLevel: 'M', margin: 3, width: 256 }); });
-  handle('app:tab', async tab => { if (!['music','catalog','jam','invite','settings'].includes(tab)) throw new Error('Unknown tab'); if(tab==='catalog'&&mode==='tv'){await applyMode('music');send('app:mode',mode);selectedTab=tab;layout();if(!smoke||liveSmoke)await music.webContents.loadURL('https://music.youtube.com');}selectedTab = tab; layout();if(tab==='catalog'||tab==='music'&&mode==='tv')music.webContents.focus();else window.webContents.focus();return {mode}; });
-  handle('app:mode', async value => { if (!['tv', 'music'].includes(value)) throw new Error('Unknown player'); await applyMode(value); selectedTab = 'music'; layout(); send('app:mode',mode);await music.webContents.loadURL(home()); });
+  handle('app:tab', async tab => { if (!['music','catalog','jam','invite','settings'].includes(tab)) throw new Error('Unknown tab');selectedTab=tab;layout();if(tab==='catalog'||tab==='music'&&mode==='tv')music.webContents.focus();else window.webContents.focus();return {mode}; });
+  handle('app:mode', async value => { if (!['tv', 'music'].includes(value)) throw new Error('Unknown player'); await applyMode(value); selectedTab = 'music'; layout(); send('app:mode',mode);await music.webContents.loadURL(home());music.webContents.navigationHistory.clear(); });
   handle('room:start', async () => { if (jam.state.role === 'guest') throw new Error('Для браузерной комнаты хостом должен быть этот ПК'); if (jam.state.role !== 'host') { await jam.host(controlledCommand); } return room.start(); });
   handle('room:state', roomView);
   handle('room:stop', () => { tunnel.stop(); room.stop(); return roomView(); });
@@ -197,7 +201,7 @@ app.whenReady().then(async () => {
   await window.loadFile(path.join(__dirname, 'ui/index.html')); layout();
   if (smoke) {
     selectedTab = 'jam'; layout();
-    await window.webContents.executeJavaScript(`tab('jam');Promise.all(document.getAnimations().filter(a=>a.animationName?.startsWith('boot-')).map(a=>a.finished.catch(()=>{})))`);
+    await window.webContents.executeJavaScript(`tab('jam');document.body.classList.remove('booting','intro-running');document.querySelector('#boot-screen').hidden=true;for(const el of document.querySelectorAll('.topbar,.listening-stage,.playback-dock'))el.style.animation='none';`);
     const result = await window.webContents.executeJavaScript(`({ title: document.title, bridge: typeof window.jam?.join, heading: document.querySelector('h1')?.textContent, inputs: document.querySelectorAll('input,textarea').length })`);
     const scroll = await window.webContents.executeJavaScript(`(() => { const main=document.querySelector('main'),bar=document.querySelector('.topbar'),details=document.createElement('div');details.style.height='1500px';main.append(details);main.scrollTop=600;const result={barTop:bar.getBoundingClientRect().top,scrolled:main.scrollTop,bodyScroll:document.scrollingElement.scrollTop};main.scrollTop=0;details.remove();return result;})()`);
     if (scroll.barTop !== 10 || scroll.bodyScroll !== 0 || scroll.scrolled <= 0) throw new Error('Fixed topbar regression');
@@ -207,8 +211,8 @@ app.whenReady().then(async () => {
       await applyMode('tv');selectedTab='music';layout();send('app:mode','tv');await window.webContents.executeJavaScript(`tab('music')`);
       const tvExclusive=await window.webContents.executeJavaScript(`document.querySelector('#listening-stage').hidden&&document.querySelector('#playback-dock').hidden&&document.querySelector('#overlay-queue').disabled`);
       if(!music.getVisible()||!tvExclusive)throw new Error('TV overlays the local scene');
-      if(music.getBounds().y!==132)throw new Error('TV frame toolbar overlaps the native page');
-      await window.webContents.executeJavaScript(`tab('catalog')`);if(mode!=='music'||player.mode!=='music'||!music.getVisible())throw new Error('Catalog from TV did not switch to Music');
+      if(music.getBounds().y!==72)throw new Error('TV content overlaps the toolbar');
+      await window.webContents.executeJavaScript(`tab('catalog')`);if(mode!=='tv'||player.mode!=='tv'||!music.getVisible())throw new Error('Catalog unexpectedly changed the TV mode');
       await applyMode('music');send('app:mode','music');await window.webContents.executeJavaScript(`tab('music')`);
       if(music.getVisible())throw new Error('Native Music unexpectedly overlays the listening scene');
       await window.webContents.executeJavaScript(`tab('catalog')`);if(!music.getVisible())throw new Error('Catalog is not visible');
@@ -248,11 +252,12 @@ app.whenReady().then(async () => {
           send('app:mode',mode);await window.webContents.executeJavaScript(`tab('music')`);
           await new Promise(resolve=>setTimeout(resolve,700));
           fs.writeFileSync(path.join(dir,'tv-frame-0.5.1.png'),(await window.capturePage()).toPNG());
-          const frame=await window.webContents.executeJavaScript(`({toolbar:!document.querySelector('#tv-toolbar').hidden,scene:document.querySelector('#listening-stage').hidden})`);
-          if(!frame.toolbar||!frame.scene||music.getBounds().y!==132)throw new Error('Live TV frame overlaps');
-          await window.webContents.executeJavaScript(`tab('catalog')`);
+          const frame=await window.webContents.executeJavaScript(`({scene:document.querySelector('#listening-stage').hidden})`);
+          if(!frame.scene||music.getBounds().y!==72)throw new Error('Live TV frame overlaps');
+          await window.webContents.executeJavaScript(`tab('catalog')`);if(mode!=='tv')throw new Error('TV catalog switched the mode');
+          await window.webContents.executeJavaScript(`window.jam.mode('music')`);await window.webContents.executeJavaScript(`tab('catalog')`);
           if(mode!=='music'||!music.webContents.getURL().startsWith('https://music.youtube.com'))throw new Error('Live TV-to-Music catalog failed');
-          console.log('TV_CATALOG_SWITCH',JSON.stringify({mode,url:music.webContents.getURL(),frame}));
+          console.log('TV_CATALOG_PRESERVED_THEN_EXPLICIT_MUSIC',JSON.stringify({mode,url:music.webContents.getURL(),frame}));
         }
         const bootstrap=await window.webContents.executeJavaScript(`window.jam.playTrack('5NV6Rdv1a3I')`);if(!bootstrap.ok)throw new Error('Search play entry failed: '+bootstrap.error);
         await player.select({ id: 'smoke', videoId: '5NV6Rdv1a3I' }, false);
@@ -262,11 +267,11 @@ app.whenReady().then(async () => {
         if (playback?.videoId !== '5NV6Rdv1a3I' || playback.playing) throw new Error('TV player adapter failed or manual pause lost');
         const baseline=await player.call({op:'SNAPSHOT'});
         if(!baseline.native)throw new Error('Native queue not readable');
-        const catalogGlass=await music.webContents.executeJavaScript(`({body:getComputedStyle(document.body).backgroundColor,app:getComputedStyle(document.querySelector('ytmusic-app')).backgroundColor,ambient:!!document.querySelector('.jamstorm-ambient')})`);
-        console.log('CATALOG_GLASS',JSON.stringify(catalogGlass));if(catalogGlass.body!=='rgba(0, 0, 0, 0)'||!catalogGlass.ambient)throw new Error('Catalog opacity or audio light regression');
+        const catalogGlass=await music.webContents.executeJavaScript(`({body:getComputedStyle(document.body).backgroundColor,app:getComputedStyle(document.querySelector('ytmusic-app')).backgroundColor,ambient:!!document.querySelector('.jamstorm-ambient'),gradient:document.querySelector('.background-gradient')?getComputedStyle(document.querySelector('.background-gradient')).backgroundImage:'none',guide:document.querySelector('#guide-wrapper')?getComputedStyle(document.querySelector('#guide-wrapper')).backgroundColor:'rgba(0, 0, 0, 0)'})`);
+        console.log('CATALOG_GLASS',JSON.stringify(catalogGlass));if(catalogGlass.body!=='rgba(0, 0, 0, 0)'||!catalogGlass.ambient||catalogGlass.gradient!=='none'||catalogGlass.guide!=='rgba(0, 0, 0, 0)')throw new Error('Catalog opacity or audio light regression');
         let markedProbe=false;
-        for(const id of ['XbGs_qK2PQA','6ONRf7h3Mdk','uelHwf8o7_U']){const info=await player.native.metadata(id);console.log('EXPLICIT_METADATA',JSON.stringify({id,...info}));if(info.known&&info.explicit){let blocked=false;try{await controlledCommand({op:'ADD',videoId:id},{actor:'browser:explicit-smoke'});}catch(error){blocked=/маркировкой E/.test(error.message);}if(!blocked)throw new Error('Explicit guest addition was accepted');const after=await player.call({op:'SNAPSHOT'});if(after.items.length!==baseline.items.length)throw new Error('Rejected Explicit addition changed native queue');markedProbe=true;break;}}
-        console.log('EXPLICIT_LIVE_BLOCK',markedProbe);
+        for(const id of ['MBJFPq2Llps','XbGs_qK2PQA']){const info=await player.native.metadata(id);console.log('EXPLICIT_METADATA',JSON.stringify({id,...info}));if(info.known&&info.explicit){let blocked=false;try{await controlledCommand({op:'ADD',videoId:id},{actor:'browser:explicit-smoke'});}catch(error){blocked=/маркировкой E/.test(error.message);}if(!blocked)throw new Error('Explicit guest addition was accepted');const after=await player.call({op:'SNAPSHOT'});if(after.items.length!==baseline.items.length)throw new Error('Rejected Explicit addition changed native queue');markedProbe=true;break;}}
+        console.log('EXPLICIT_LIVE_BLOCK',markedProbe);if(!markedProbe)throw new Error('No marked E reference track was verified');
 
         await jam.host(controlledCommand);await room.start();
         const guestCommand=async(op,fields)=>{

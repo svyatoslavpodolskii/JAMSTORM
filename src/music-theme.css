@@ -5,4 +5,9 @@ ytmusic-browse-response,ytmusic-player-page,#page-manager,#background,ytmusic-gu
 ytmusic-nav-bar{background:#1c243266!important;backdrop-filter:blur(28px) saturate(145%);border-bottom:1px solid #ffffff14}
 ytmusic-player-bar{background:#1c243299!important;backdrop-filter:blur(28px);border-top:1px solid #ffffff18}
 ytmusic-search-box #search-container{border-radius:20px;background:#ffffff12!important;backdrop-filter:blur(20px)}
-.jamstorm-ambient{position:fixed;inset:-12%;z-index:0;pointer-events:none;background:radial-gradient(ellipse at 22% 20%,rgb(var(--jamstorm-ambient,146 106 82) / .75),transparent 64%),radial-gradient(ellipse at 90% 85%,rgb(var(--jamstorm-ambient,146 106 82) / .45),transparent 60%);transition:opacity 160ms linear;filter:blur(28px)}
+.jamstorm-ambient{position:fixed;inset:-12%;z-index:0;pointer-events:none;background:radial-gradient(ellipse at 22% 20%,rgb(var(--jamstorm-ambient,146 106 82) / .75),transparent 64%),radial-gradient(ellipse at 90% 85%,rgb(var(--jamstorm-ambient,146 106 82) / .45),transparent 60%);transition:opacity 1500ms ease-out;filter:blur(28px)}
+
+/* These native layers are independent of body/app backgrounds and caused the hard seam. */
+.background-gradient,ytmusic-browse-response .background,#guide-wrapper,#mini-guide-background{background:transparent!important;background-image:none!important}
+
+html{color-scheme:normal!important}

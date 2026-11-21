@@ -25,7 +25,7 @@ npm run icons
 npm run build
 ```
 
-Portable: dist/JAMSTORM-0.6.0-portable.exe. UI-review использует управляемые данные и создаёт снимки в artifacts/ui-review; исходные картинки публикации — .github/media. Публичные снимки содержат собственную обложку/текст. Изменение источника assets/icon-source.svg требует npm run icons.
+Portable: dist/JAMSTORM-0.6.1-portable.exe. UI-review использует управляемые данные и создаёт снимки в artifacts/ui-review; исходные картинки публикации — .github/media. Публичные снимки содержат собственную обложку/текст. Изменение источника assets/icon-source.svg требует npm run icons.
 
 Если среда выставляет ELECTRON_RUN_AS_NODE, используйте npm-команды: scripts/run.cjs и electron-task.cjs удаляют переменную перед запуском GUI. Обычный node scripts/ui-review.cjs не запускает Electron.
 
@@ -33,9 +33,9 @@ Portable: dist/JAMSTORM-0.6.0-portable.exe. UI-review использует уп�
 
 - npm run check — синтаксис JS/CJS.
 - npm test — протокол, нативная очередь, политика Explicit/гостей, криптография, HTTP-комната и отображение поверхностей.
-- npm run smoke — IPC, навигация TV→Music, отсутствие наложений, геометрия TV, F11.
+- npm run smoke — IPC, навигация TV-каталог с сохранением режима, затем явный Music, отсутствие наложений, геометрия TV, F11.
 - npm run ui:review — 40 комбинаций короткого окна, 25 снимков, запуск анимаций, русский Ctrl K, винил, drag & drop, полный экран.
-- npm run smoke:live — реальный TV→Music, первая песня, нативная очередь через гостевые HTTP-команды, тексты, HQ-обложка, уровень аудио и фоновое воспроизведение. Требует сети и доступности YouTube/LRCLIB, использует отдельный профиль jam-desktop-smoke и тестовую комнату. Это не тест физического телефона.
+- npm run smoke:live — реальный TV-каталог с сохранением режима, затем явный Music, первая песня, нативная очередь через гостевые HTTP-команды, тексты, HQ-обложка, уровень аудио и фоновое воспроизведение. Требует сети и доступности YouTube/LRCLIB, использует отдельный профиль jam-desktop-smoke и тестовую комнату. Это не тест физического телефона.
 
 Дополнительный Java-тест берёт исходники Jam-Layer из upstream/Jam-Layer и выполняется при наличии JDK. Не включайте APK и чужое дерево исходников в сборку.
 

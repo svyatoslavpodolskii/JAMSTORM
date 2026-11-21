@@ -136,9 +136,9 @@ $('window-material').onchange=()=>{localStorage.setItem('window-material',$('win
 $('glass').addEventListener('click',nativeMaterial);nativeMaterial();
 let visualMotion=localStorage.getItem('ambient-sound')!=='off'&&!matchMedia('(prefers-reduced-motion: reduce)').matches;
 $('ambient-sound').checked=visualMotion;call(window.jam.visuals(visualMotion)).catch(()=>{});
-$('ambient-sound').onchange=()=>{visualMotion=$('ambient-sound').checked;localStorage.setItem('ambient-sound',visualMotion?'on':'off');call(window.jam.visuals(visualMotion)).catch(()=>{});if(!visualMotion)$('ambient-light').style.opacity='.25';};
+$('ambient-sound').onchange=()=>{visualMotion=$('ambient-sound').checked;localStorage.setItem('ambient-sound',visualMotion?'on':'off');call(window.jam.visuals(visualMotion)).catch(()=>{});if(!visualMotion)window.playerEffects.level(0);};
 window.jam.onAmbient(color=>{if(Array.isArray(color)&&color.length===3&&color.every(value=>Number.isInteger(value)&&value>=0&&value<=255))window.playerEffects.ambient(color);});
-window.jam.onLevel(level=>{if(visualMotion){$('ambient-light').style.opacity=String(.25+level*.5);$('ambient-light').style.transform='scale('+(1+level*.09)+')';}});
+window.jam.onLevel(level=>{if(visualMotion)window.playerEffects.level(level);});
 
 for(const button of document.querySelectorAll('#fullscreen-nav [data-page]'))button.onclick=()=>action(()=>tab(button.dataset.page));
 window.jam.onSearch?.(()=>action(async()=>{await tab('music');window.listening.search();}));
@@ -147,3 +147,7 @@ $('cast-close').onclick=()=>$('cast-dialog').close();$('cast-browser').onclick=(
 async function loadPolicy(){try{const value=await call(window.jam.policy());for(const [id,key] of [['block-explicit','blockExplicit'],['hide-explicit','hideExplicit'],['guest-reorder','guestReorder']])$(id).checked=value[key];$('guest-limit').value=value.guestLimit;}catch(error){message(error.message);}}
 for(const id of ['block-explicit','hide-explicit','guest-reorder','guest-limit'])$(id).onchange=async()=>{try{await call(window.jam.policy({blockExplicit:$('block-explicit').checked,hideExplicit:$('hide-explicit').checked,guestReorder:$('guest-reorder').checked,guestLimit:Number($('guest-limit').value)}));}catch(error){message(error.message);await loadPolicy();}};
 loadPolicy();
+
+function navigation(value){for(const key of ['back','forward'])for(const button of document.querySelectorAll('[data-navigation="'+key+'"]'))button.disabled=!value[key];}
+for(const button of document.querySelectorAll('[data-navigation]'))button.onclick=()=>action(async()=>navigation(await call(window.jam.navigate(button.dataset.navigation))));
+window.jam.onNavigation(navigation);call(window.jam.navigation()).then(navigation).catch(()=>{});
