@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('jam', {
   appearance: open => ipcRenderer.invoke('app:appearance',open),
   presentation:value=>ipcRenderer.invoke('app:presentation',value),window:action=>ipcRenderer.invoke('app:window',action),
   frame:()=>ipcRenderer.invoke('app:frame'),
+  onLogin:callback=>ipcRenderer.on('app:login-state',(_e,value)=>callback(value)),
   login: () => ipcRenderer.invoke('app:login'),
   retry: () => ipcRenderer.invoke('app:retry'),
   copy: () => ipcRenderer.invoke('jam:copy'),

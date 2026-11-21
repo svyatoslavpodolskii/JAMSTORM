@@ -8,3 +8,9 @@ ytlr-search,ytlr-settings{background:#171c25!important}
 /* Keep the entire frame visible on ultrawide displays. */
 video,.html5-video-container video{object-fit:contain!important;width:100%!important;height:100%!important;left:0!important;top:0!important}
 .html5-video-container{width:100%!important;height:100%!important}
+/* Leanback's root uses a hard-coded 80rem × 45rem TV safe area. Keep its
+   typography scale, but let surfaces and ambient backgrounds fill ultrawide. */
+#container{width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;margin:0!important;inset:0!important}
+#app-background{width:100vw!important;height:100vh!important;inset:0!important;margin:0!important}
+ytlr-app-background-container,ytlr-surface-page,ytlr-tv-browse-renderer,ytlr-tv-surface-content-renderer{width:100vw!important;height:100vh!important;max-width:none!important}
+ytlr-audio-player-overlay-renderer{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;overflow:hidden!important}

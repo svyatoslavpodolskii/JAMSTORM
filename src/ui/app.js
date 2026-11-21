@@ -64,7 +64,8 @@ async function tab(value) {
   document.querySelector('main .page-heading h1').textContent=({jam:'Твоя очередь',invite:'Вместе звучит лучше',settings:'Настройки'})[value]||'Музыка';
   for (const name of ['music','catalog','jam','invite','settings']) { $(`${name}-tab`).classList.toggle('active', name === value); $(`${name}-tab`).setAttribute('aria-pressed', String(name === value)); }
 }
-$('music-login').onclick=()=>action(async()=>{await tab('catalog');await call(window.jam.login());});
+window.jam.onLogin(text=>message(text));
+$('music-login').onclick=()=>action(async()=>{await call(window.jam.login());});
 $('catalog-tab').onclick=()=>action(()=>tab('catalog'));
 $('music-tab').addEventListener('click', () => action(() => tab('music')));
 $('jam-tab').addEventListener('click', () => action(() => tab('jam')));

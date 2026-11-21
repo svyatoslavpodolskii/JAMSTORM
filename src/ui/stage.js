@@ -2,7 +2,7 @@
 (() => {
   const el=id=>document.getElementById(id),stage=el('listening-stage'),dock=el('playback-dock');
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let queue=null,page='music',mode='music',panels={lyrics:'hidden',queue:'hidden'},rowsKey='',trackKey='',lyricKey='',lyricRequest=0,lines=[],highlight=-1,clock={},received=0,manualUntil=0,searching=false,lyricAvailable=null,peekState=null;
+  let queue=null,page='music',mode='music',panels={lyrics:'hidden',queue:'hidden'},rowsKey='',trackKey='',lyricKey='',lyricRequest=0,lines=[],highlight=-1,clock={},received=0,displayPosition=null,lastTick=0,seekUntil=0,manualUntil=0,searching=false,lyricAvailable=null,peekState=null;
   const pauseIcon='<svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M7 5h3v14H7zm7 0h3v14h-3z"/></svg>';
   const playIcon='<svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="m8 5 12 7-12 7z"/></svg>';
   const time=ms=>{const seconds=Math.max(0,Math.floor((ms||0)/1000));return Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0');};
@@ -17,9 +17,9 @@
   function updatePage(){
     const surface=window.surfaceLayout(page,mode);stage.hidden=!surface.sceneVisible;dock.hidden=!surface.dockVisible||!current()||['settings','invite'].includes(page);
     document.body.classList.toggle('has-dock',!dock.hidden);
-    el('catalog-tab').textContent=mode==='tv'?'YouTube TV':'Каталог';
+    el('catalog-tab').textContent=mode==='tv'?'Music TV':'Каталог';
     document.body.classList.toggle('remote-view',surface.remoteVisible);document.body.classList.toggle('catalog-view',page==='catalog');
-    
+
     for(const key of ['lyrics','queue'])el('overlay-'+key).disabled=page!=='music'||key==='lyrics'&&lyricAvailable===false;
     document.body.classList.toggle('listening-view',page==='music');
   }
@@ -45,7 +45,6 @@
     el('stage-lines').replaceChildren(box);
   }
   async function loadLyrics(){
-    if(mode==='tv')return;
     const now=current();if(!now){if(lyricKey!=='empty'){lyricKey='empty';lines=[];lyricRequest++;lyricAvailable=false;updatePage();el('lyrics-caption').textContent='В такт музыке';el('lyrics-credit').textContent='Тексты: LRCLIB';lyricsState('Слова появятся здесь','Выбери песню. Найдём подходящий текст.');}return;}
     const key=JSON.stringify([now.videoId,now.title,now.artist,Math.round((clock.duration||0)/1000)]);if(key===lyricKey)return;
     lyricKey=key;const request=++lyricRequest;lines=[];highlight=-1;lyricAvailable=null;
@@ -87,15 +86,17 @@
     el('hero-eyebrow').textContent=now?'Сейчас играет':'Твоя музыка. Ваша очередь.';el('hero-start').hidden=!!now;
     el('dock-title').textContent=window.artwork.title(now)||'Пока тихо';el('dock-artist').textContent=now?.artist||'Выбери первую песню';
     window.playerEffects.update(now,clock,item=>image(el('stage-cover'),item));image(el('dock-cover'),now);
-    if(now?.videoId!==trackKey){trackKey=now?.videoId;manualUntil=0;lyricAvailable=null;}
+    if(now?.videoId!==trackKey){trackKey=now?.videoId;displayPosition=null;manualUntil=0;lyricAvailable=null;}
     el('dock-play').dataset.playing=String(!!clock.playing);el('dock-play').setAttribute('aria-label',clock.playing?'Пауза':'Воспроизвести');
     el('dock-play').disabled=!now;el('dock-seek').disabled=!now||!clock.duration;
     const index=items.findIndex(row=>row.current);el('dock-previous').disabled=index<=0;el('dock-next').disabled=index<0||index>=items.length-1;
     el('stage-count').textContent=String(items.length);el('dock-duration').textContent=time(clock.duration);renderRows(items);loadLyrics();tick();
   }
   function tick(){
-    const position=Math.min(clock.duration||Infinity,(clock.position||0)+(clock.playing?Math.min(1800,performance.now()-received):0));
-    window.playerEffects.tick(position,clock.duration,clock.playing);el('dock-position').textContent=time(position);if(document.activeElement!==el('dock-seek'))el('dock-seek').value=clock.duration?Math.round(position/clock.duration*1000):0;
+    const now=performance.now(),target=Math.min(clock.duration||Infinity,(clock.position||0)+(clock.playing?Math.min(1800,now-received):0)),dt=Math.min(100,now-(lastTick||now));lastTick=now;
+    if(displayPosition===null||!clock.playing||Math.abs(target-displayPosition)>1600)displayPosition=target;else displayPosition+=(target-displayPosition)*(1-Math.exp(-dt/90));
+    const position=displayPosition;
+    window.playerEffects.tick(position,clock.duration,clock.playing);el('dock-position').textContent=time(position);if(performance.now()>seekUntil)el('dock-seek').value=clock.duration?position/clock.duration*1000:0;
     const live=el('stage-tracks').querySelector('.is-current .track-live');if(live)live.textContent=clock.playing?'Играет':'Пауза';
     if(!lines.length||panels.lyrics==='hidden')return;let index=-1;for(let i=0;i<lines.length;i++){if(lines[i].time>position)break;index=i;}if(index===highlight)return;const previous=highlight;highlight=index;
     const container=el('stage-lines');[...container.children].forEach((line,i)=>{line.classList.toggle('is-active',i===index);line.classList.toggle('is-past',i<index);});
@@ -113,21 +114,21 @@
     }catch(error){el('search-hint').textContent=error.message;}finally{searching=false;el('stage-search-submit').disabled=false;}
   };
   for(const key of ['lyrics','queue'])el('close-'+key).onclick=()=>{const next={...panels,[key]:'hidden'};setPanels(next);window.jam.panel({kind:key,placement:'hidden'}).catch(fail);};
-  
+
   el('queue-all').onclick=()=>tab('jam').catch(fail);el('dock-invite').onclick=()=>el('invite-tab').click();
   el('dock-play').onclick=()=>{const now=current();if(now)command('PLAY',{item:now.id,videoId:now.videoId,playing:!clock.playing});};
   for(const [id,op] of [['dock-previous','SKIP_PREVIOUS'],['dock-next','SKIP_NEXT']])el(id).onclick=()=>command(op,{});
-  el('dock-seek').onchange=()=>command('SEEK',{videoId:current()?.videoId,position:Math.round(Number(el('dock-seek').value)/1000*clock.duration)});
+  el('dock-seek').step='0.001';el('dock-seek').oninput=()=>{seekUntil=performance.now()+800;};el('dock-seek').onchange=()=>{const position=Math.round(Number(el('dock-seek').value)/1000*clock.duration);clock={...clock,position};received=performance.now();displayPosition=position;seekUntil=0;return command('SEEK',{videoId:current()?.videoId,position});};
   el('stage-lines').onwheel=()=>{manualUntil=performance.now()+4500;};el('stage-lines').addEventListener('touchmove',()=>{manualUntil=performance.now()+4500;},{passive:true});
   document.addEventListener('keydown',event=>{if(event.code==='Space'&&page==='music'&&!el('search-dialog').open&&!['INPUT','TEXTAREA','SELECT','BUTTON'].includes(document.activeElement.tagName)){event.preventDefault();el('dock-play').click();}if((event.ctrlKey||event.metaKey)&&(event.code==='KeyK'||['k','л'].includes(event.key.toLowerCase()))){event.preventDefault();openSearch();}});
   for(const key of ['lyrics','queue']){
     const edge=el('peek-'+key),pane=el(key+'-pane');
-    const show=()=>{if(page!=='music'||mode==='tv'||panels[key]!=='hidden'||key==='lyrics'&&lyricAvailable===false)return;peekState={...panels};setPanels({...panels,[key]:'side'});};
+    const show=()=>{if(page!=='music'||panels[key]!=='hidden'||key==='lyrics'&&lyricAvailable===false)return;peekState={...panels};setPanels({...panels,[key]:'side'});};
     edge.onpointerenter=event=>{if(event.pointerType==='mouse')show();};edge.onpointerleave=()=>setTimeout(()=>{if(peekState&&!pane.matches(':hover')){const previous=peekState;peekState=null;setPanels(previous);}},250);edge.onclick=()=>toggle(key);
     pane.onpointerleave=event=>{if(peekState&&event.pointerType==='mouse'){const previous=peekState;peekState=null;setPanels(previous);}};
   }
   new ResizeObserver(()=>{if(panels.lyrics!=='hidden'){highlight=-2;requestAnimationFrame(tick);}}).observe(stage);
   window.jam.onPanel(value=>{peekState=null;setPanels(value);});call(window.jam.panels()).then(value=>setPanels(value,false)).catch(fail);
   setTimeout(()=>{document.body.classList.remove('booting','intro-running');el('boot-screen').classList.add('finished');setTimeout(()=>el('boot-screen').hidden=true,500);},reduced?0:1550);
-  window.listening={render,drag:wireDrag,search:openSearch,page:value=>{page=value;updatePage();},mode:value=>{mode=value;updatePage();},panels:setPanels};updatePage();setInterval(tick,100);
+  window.listening={render,drag:wireDrag,search:openSearch,page:value=>{page=value;updatePage();},mode:value=>{mode=value;updatePage();},panels:setPanels};updatePage();const animateClock=()=>{if(!document.hidden)tick();requestAnimationFrame(animateClock);};requestAnimationFrame(animateClock);
 })();

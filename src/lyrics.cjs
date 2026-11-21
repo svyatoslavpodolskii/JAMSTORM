@@ -11,7 +11,7 @@ const normalize=value=>value.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{
 function metadata(track) {
   if(!track||typeof track.title!=='string'||typeof track.artist!=='string')throw new Error('Включи песню, и здесь появится её текст');
   const title=track.title.slice(0,250).replace(/\s*[([][^)\]]*(?:official|feat\.?|ft\.?|lyric|audio|video)[^)\]]*[)\]]/gi,'').replace(/\s*[-–|]\s*(?:official|lyrics?|audio|music video).*$/i,'').trim();
-  const artist=track.artist.slice(0,200).split(/[•·]/)[0].replace(/\s*-\s*Topic$/i,'').trim();
+  const artist=track.artist.slice(0,200).split(/[•·]/)[0].replace(/\s*-\s*Topic$/i,'').split(/,|\s+(?:feat\.?|ft\.?)\s+/i)[0].trim();
   if(!title||!artist||/^[\w-]{11}$/.test(title))throw new Error('Название и исполнитель ещё загружаются');
   return {title,artist,duration:Number.isFinite(track.duration)&&track.duration>0?track.duration/1000:null};
 }

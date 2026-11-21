@@ -10,6 +10,7 @@ let state={phase:'idle',role:null,peers:0,queue:{ok:true,native:true,revision:'r
 const fixtures=[['5NV6Rdv1a3I','Get Lucky','Daft Punk'],['fLexgOxsZu0','Uptown Funk','Mark Ronson · Bruno Mars'],['kJQP7kiw5Fk','Despacito','Luis Fonsi · Daddy Yankee']];
 const windows=[];const errors=[];
 const handle=(key,fn)=>ipcMain.handle(key,async(_event,...args)=>{try{return {ok:true,value:await fn(...args)};}catch(error){return {ok:false,error:error.message};}});
+handle('unused:login-state',()=>{});
 handle('app:navigation',()=>({back:true,forward:false}));handle('app:navigate',()=>({back:false,forward:true}));
 handle('app:appearance',()=>{});
 handle('app:frame',()=>({overlay:true}));
@@ -28,7 +29,7 @@ handle('app:lyrics',()=>({lines:Array.from({length:14},(_,i)=>({time:i*10000,tex
 async function make(file,width,height){
  const win=new BrowserWindow({width,height,backgroundColor:'#151a24',show:false,webPreferences:{offscreen:true,backgroundThrottling:false,sandbox:true,contextIsolation:true,preload:path.join(__dirname,'../src/preload.cjs')}});windows.push(win);
  win.webContents.on('console-message',event=>{if(event.level==='error'&&!event.message.includes('ERR_'))errors.push(event.message);});
- await win.loadFile(path.join(__dirname,'../src/ui',file));return win;
+ await win.loadFile(path.join(__dirname,'../src/ui',file));const execute=win.webContents.executeJavaScript.bind(win.webContents);win.webContents.executeJavaScript=async source=>{try{return await execute(source)}catch(error){console.error('REVIEW_SCRIPT',source.slice(0,1200),'RENDERER_ERRORS',errors);throw error;}};return win;
 }
 async function shot(win,name){
  await new Promise(resolve=>setTimeout(resolve,300));
@@ -131,9 +132,10 @@ app.whenReady().then(async()=>{
  state.queue.clock.playing=false;
  await win.webContents.executeJavaScript(`window.listening.render(${JSON.stringify(state.queue)});new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);await new Promise(resolve=>setTimeout(resolve,450));
  state.queue.clock.playing=true;
- const morph=await win.webContents.executeJavaScript(`for(const path of document.querySelectorAll('.play-morph path'))path.style.transitionDuration='1.5s';window.listening.render(${JSON.stringify(state.queue)});new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(document.querySelector('#dock-play').getAnimations({subtree:true}).some(a=>a.transitionProperty==='d')))))`);
- await win.webContents.executeJavaScript(`for(const path of document.querySelectorAll('.play-morph path'))path.style.transitionDuration=''`);
- if(!morph)throw new Error('Play/pause SVG does not morph');
+ const pausedShape=await win.webContents.executeJavaScript(`getComputedStyle(document.querySelector('.play-left')).d`);
+ await win.webContents.executeJavaScript(`window.listening.render(${JSON.stringify(state.queue)})`);await new Promise(resolve=>setTimeout(resolve,500));
+ const playingShape=await win.webContents.executeJavaScript(`getComputedStyle(document.querySelector('.play-left')).d`);
+ if(pausedShape===playingShape)throw new Error('Play/pause SVG states are identical');
  const pauseStyle=await win.webContents.executeJavaScript(`(()=>{const light=document.querySelector('#ambient-light');document.body.classList.add('playback-paused');const rule=[...document.styleSheets].flatMap(s=>[...s.cssRules]).find(r=>r.selectorText==='body.playback-paused .ambient-light');return {paused:Number(rule.style.opacity),transition:getComputedStyle(light).transitionDuration};})()`);
  if(pauseStyle.paused!==.35||pauseStyle.transition!=='1.4s')throw new Error('Pause must dim the shared light smoothly');
  await win.webContents.executeJavaScript(`document.body.classList.remove('playback-paused')`);
@@ -165,7 +167,7 @@ app.whenReady().then(async()=>{
  await shot(win,'waveform-trail');
  await win.webContents.executeJavaScript(`const choice=document.querySelector('#appearance-dock');choice.value='auto';choice.dispatchEvent(new Event('input'));document.activeElement?.blur()`);
  await new Promise(resolve=>setTimeout(resolve,3100));
- if(!await win.webContents.executeJavaScript(`document.body.classList.contains('dock-collapsed')`))throw Error('Player did not collapse');
+ if(!await win.webContents.executeJavaScript(`document.body.classList.contains('dock-collapsed')&&getComputedStyle(document.querySelector('#playback-dock')).opacity==='0'`))throw Error('Player did not collapse');
  await shot(win,'player-collapsed');
  await win.webContents.executeJavaScript(`document.querySelector('#dock-reveal').click()`);
  if(await win.webContents.executeJavaScript(`document.body.classList.contains('dock-collapsed')`))throw Error('Player did not reveal');
@@ -175,13 +177,17 @@ app.whenReady().then(async()=>{
  await new Promise(resolve=>setTimeout(resolve,120));await shot(win,'lyrics-particles');
 
  await win.webContents.executeJavaScript(`window.playerEffects.palette([[185,92,65],[68,117,145],[190,168,135]]);document.querySelector('.floating-artwork').style.backgroundImage='url('+${JSON.stringify(publicArt)}+')';window.listening.panels({lyrics:'hidden',queue:'side'},false);document.querySelector('#vinyl-mode').checked=false;document.querySelector('#vinyl-mode').dispatchEvent(new Event('change'))`);
- for(const id of ['glass','cover','daylight','quiet']){
+ for(const id of ['glass','cover','silver','daylight','quiet']){
   await win.webContents.executeJavaScript(`(()=>{const select=document.querySelector('#appearance-preset');select.value=${JSON.stringify(id)};select.dispatchEvent(new Event('change'));document.querySelector('#appearance-dock').value='always';document.querySelector('#appearance-dock').dispatchEvent(new Event('input'));})()`);
   await new Promise(resolve=>setTimeout(resolve,650));await shot(win,'preset-'+id);
   const chrome=await win.webContents.executeJavaScript(`({glass:document.body.dataset.translucent,blur:getComputedStyle(document.querySelector('.topbar')).backdropFilter,color:getComputedStyle(document.querySelector('.topbar')).color,controls:[...document.querySelectorAll('[data-window]')].map(e=>e.getBoundingClientRect().height)})`);
   if(chrome.controls.some(h=>h!==34)||id==='quiet'&&(chrome.glass!=='false'||chrome.blur!=='none'))throw Error('Chrome preset failed: '+JSON.stringify(chrome));
  }
+ for(const style of ['horizon','bloom']){await win.webContents.executeJavaScript(`(()=>{const select=document.querySelector('#appearance-background');select.value=${JSON.stringify(style)};select.dispatchEvent(new Event('input'));})()`);await shot(win,'background-'+style);}
+ await win.webContents.executeJavaScript(`window.listening.mode('tv');window.listening.render({...${JSON.stringify(state.queue)},items:[{id:'tv-fixture',videoId:'5NV6Rdv1a3I',title:'TV review',artist:'JAMSTORM Sessions',current:true}]});window.listening.panels({lyrics:'center',queue:'hidden'},false)`);
+ await new Promise(resolve=>setTimeout(resolve,150));
+ const tvLyrics=await win.webContents.executeJavaScript(`({lines:document.querySelectorAll('.lyric-line').length,disabled:document.querySelector('#overlay-lyrics').disabled})`);if(tvLyrics.lines!==14||tvLyrics.disabled)throw Error('TV lyrics are unavailable '+JSON.stringify(tvLyrics));
  if(errors.length)throw new Error(errors.join('\n'));
- console.log('UI_REVIEW_OK',JSON.stringify({screenshots:35,resizeCases:cases,toolbar:header,lyrics:lyricState,motion,bootMotion}));
+ console.log('UI_REVIEW_OK',JSON.stringify({screenshots:38,resizeCases:cases,toolbar:header,lyrics:lyricState,motion,bootMotion}));
  app.exit(0);
 }).catch(error=>{console.error('UI_REVIEW_FAILED',error.stack);app.exit(1);});

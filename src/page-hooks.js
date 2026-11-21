@@ -23,7 +23,7 @@
     const listeners = [];
     const id = new URLSearchParams(location.hash.split('?')[1] || '').get('v');
     window.h5vcc = { runtime: { initialDeepLink: /^[\w-]{11}$/.test(id || '') ? 'https://www.youtube.com/watch?v=' + id : '', onDeepLink: { addListener: fn => { if (typeof fn === 'function') listeners.push(fn); } } }, system: { getVideoContainerSizeOverride: () => '1920x1080' } };
-    let identityReady = localStorage.getItem('jamstorm:guest-initialized') === 'yes';
+    let identityReady = localStorage.getItem('jamstorm:guest-initialized') === 'yes'||/(?:^|; )SAPISID=/.test(document.cookie);
     window.__jamstormWatch = videoId => {
       if (!/^[\w-]{11}$/.test(videoId || '') || !identityReady) return false;
       const root = document.querySelector('ytlr-app');
