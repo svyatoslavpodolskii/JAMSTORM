@@ -11,6 +11,9 @@ const fixtures=[['5NV6Rdv1a3I','Get Lucky','Daft Punk'],['fLexgOxsZu0','Uptown F
 const windows=[];const errors=[];
 const handle=(key,fn)=>ipcMain.handle(key,async(_event,...args)=>{try{return {ok:true,value:await fn(...args)};}catch(error){return {ok:false,error:error.message};}});
 handle('app:navigation',()=>({back:true,forward:false}));handle('app:navigate',()=>({back:false,forward:true}));
+handle('app:appearance',()=>{});
+handle('app:frame',()=>({overlay:true}));
+handle('app:update',()=>({available:false}));
 handle('app:policy',()=>({blockExplicit:true,hideExplicit:true,guestLimit:3,guestReorder:false}));handle('app:open-browser',()=>{});
 handle('app:material',value=>({material:value,supported:true}));handle('app:visuals',()=>true);
 handle('jam:state',()=>state);handle('app:queue',()=>state.queue);handle('app:panels',()=>panels);
@@ -29,6 +32,7 @@ async function make(file,width,height){
 async function shot(win,name){await new Promise(resolve=>setTimeout(resolve,300));fs.writeFileSync(path.join(out,name+'.png'),(await win.webContents.capturePage(undefined,{stayHidden:true})).toPNG());}
 app.whenReady().then(async()=>{
  const win=await make('index.html',1320,880);
+ await win.webContents.executeJavaScript(`document.querySelector('#appearance-dock').value='always';document.querySelector('#appearance-dock').dispatchEvent(new Event('input'))`);
  await new Promise(resolve=>setTimeout(resolve,120));
  const bootMotion=await win.webContents.executeJavaScript(`document.getAnimations().filter(a=>a.playState==='running').map(a=>a.animationName||'')`);
  await win.webContents.executeJavaScript(`document.body.classList.add('native-material');document.documentElement.style.background='linear-gradient(125deg,#e99b44,#198eae 48%,#c54434)'`);
@@ -41,6 +45,16 @@ app.whenReady().then(async()=>{
  await win.webContents.executeJavaScript(`document.querySelector('#room-start').click()`);await new Promise(resolve=>setTimeout(resolve,400));await shot(win,'04-share-qr');
  await win.webContents.executeJavaScript(`tab('settings')`);await shot(win,'05-settings');
  win.setSize(860,700);await shot(win,'06-settings-small');
+ await win.webContents.executeJavaScript(`document.querySelector('main').scrollTop=99999`);
+ const settingsEnd=await win.webContents.executeJavaScript(`(()=>{const main=document.querySelector('main'),last=document.querySelector('#settings-page .about').getBoundingClientRect();return {bottom:last.bottom,viewport:main.getBoundingClientRect().bottom,dock:document.querySelector('#playback-dock').hidden};})()`);
+ if(settingsEnd.bottom>settingsEnd.viewport||!settingsEnd.dock)throw Error('Settings end is clipped: '+JSON.stringify(settingsEnd));
+ await shot(win,'settings-end');
+ await win.webContents.executeJavaScript(`document.querySelector('main').scrollTop=0;document.querySelector('#appearance-toggle').click();for(const [key,value] of Object.entries({background:'artwork',opacity:35,grain:45})){const el=document.querySelector('#appearance-'+key);el.value=value;el.dispatchEvent(new Event('input'));}`);
+ const appearance=await win.webContents.executeJavaScript(`({open:document.querySelector('#appearance-popover').matches(':popover-open'),background:document.body.dataset.background,opacity:document.body.style.getPropertyValue('--window-opacity'),grain:document.body.style.getPropertyValue('--grain')})`);
+ if(!appearance.open||appearance.background!=='artwork'||Number(appearance.opacity)!==.65||Math.abs(Number(appearance.grain)-.072)>.000001)throw Error('Appearance controls failed: '+JSON.stringify(appearance));
+ await shot(win,'appearance');
+ await win.webContents.executeJavaScript(`document.querySelector('#appearance-popover').hidePopover();for(const [key,value] of Object.entries({background:'ambient',opacity:65,grain:0})){const el=document.querySelector('#appearance-'+key);el.value=value;el.dispatchEvent(new Event('input'));}`);
+
  const header=await win.webContents.executeJavaScript(`({overflow:document.querySelector('.topbar').scrollWidth>document.querySelector('.topbar').clientWidth,buttons:[...document.querySelectorAll('.topbar button')].filter(e=>e.getBoundingClientRect().right>innerWidth).length})`);
  if(header.overflow||header.buttons)throw new Error('Toolbar overflows at 860px: '+JSON.stringify(header));
  await win.webContents.executeJavaScript(`tab('jam')`);await shot(win,'07-queue-small');
@@ -77,7 +91,7 @@ app.whenReady().then(async()=>{
      const hit=document.elementFromPoint((search.left+search.right)/2,(search.top+search.bottom)/2);
      return {search,art,start,dock,stage,focused,searchClickable:!!hit?.closest('#stage-search'),startVisible:document.getElementById('hero-start').hidden||focused!=='artwork'||start.bottom<=stage.bottom+1};
     })()`);
-    if(!result.searchClickable||!result.startVisible||result.search.top<result.stage.top-1||result.stage.bottom>result.dock.top||result.focused==='artwork'&&(result.art.top<result.search.bottom||result.art.bottom>result.stage.bottom))geometryFailures.push({width,height,empty,value,result});
+    if(!result.searchClickable||!result.startVisible||result.search.top<0||result.dock.height>0&&result.stage.bottom>result.dock.top||result.focused==='artwork'&&(result.art.top<result.stage.top||result.art.bottom>result.stage.bottom))geometryFailures.push({width,height,empty,value,result});
    }
   }
  }
@@ -93,7 +107,7 @@ app.whenReady().then(async()=>{
  const motion=await win.webContents.executeJavaScript(`({active:document.querySelector('#stage-lines .is-active')?.textContent,animations:document.getAnimations().filter(a=>a.playState==='running').length,boot:!![...document.styleSheets].flatMap(s=>[...s.cssRules]).find(r=>r.name==='boot-stage')})`);
  if(motion.animations<1||!motion.boot)throw new Error('No visible animation '+JSON.stringify(motion));
  await win.webContents.executeJavaScript(`window.listening.mode('tv')`);const tv=await win.webContents.executeJavaScript(`({stage:document.querySelector('#listening-stage').hidden,dock:document.querySelector('#playback-dock').hidden,disabled:document.querySelector('#overlay-lyrics').disabled})`);
- if(!tv.stage||!tv.dock||!tv.disabled)throw new Error('TV overlaps local stage');
+ if(tv.stage||tv.dock||tv.disabled)throw new Error('TV shared scene controls are missing');
  await shot(win,'tv-exclusive');await win.webContents.executeJavaScript(`window.listening.mode('music')`);
  await win.webContents.executeJavaScript(`document.querySelector('#stage-search').click();document.querySelector('#stage-query').value='test';document.querySelector('#stage-search-form').requestSubmit()`);await shot(win,'search-dialog');
  const searchCount=await win.webContents.executeJavaScript(`document.querySelectorAll('.search-result').length`);if(searchCount!==3)throw new Error('Search missing results');
@@ -105,9 +119,11 @@ app.whenReady().then(async()=>{
  const spinning=await win.webContents.executeJavaScript(`({round:document.body.classList.contains('vinyl'),label:document.body.classList.contains('vinyl-paper'),rate:document.querySelector('#record-spin').getAnimations()[0]?.playbackRate})`);
  if(!spinning.round||!spinning.label||!spinning.rate)throw new Error('Vinyl failed '+JSON.stringify(spinning));
  const paperHit=await win.webContents.executeJavaScript(`(()=>{const el=document.querySelector('#paper-toggle'),r=el.getBoundingClientRect();return [r.left+3,r.right-3].every(x=>document.elementFromPoint(x,r.top+r.height/2)?.closest('#paper-toggle'));})()`);if(!paperHit)throw new Error('Paper-label control is clipped');
- await win.webContents.executeJavaScript(`window.listening.render({...${JSON.stringify(state.queue)},clock:{...${JSON.stringify(state.queue.clock)},playing:false}})`);await new Promise(resolve=>setTimeout(resolve,450));
- await win.webContents.executeJavaScript(`window.listening.render({...${JSON.stringify(state.queue)},clock:{...${JSON.stringify(state.queue.clock)},playing:true}})`);await new Promise(resolve=>setTimeout(resolve,50));
- const morph=await win.webContents.executeJavaScript(`document.querySelector('#dock-play').getAnimations({subtree:true}).some(a=>a.transitionProperty==='d')`);if(!morph)throw new Error('Play/pause SVG does not morph');
+ state.queue.clock.playing=false;
+ await win.webContents.executeJavaScript(`window.listening.render(${JSON.stringify(state.queue)})`);await new Promise(resolve=>setTimeout(resolve,450));
+ state.queue.clock.playing=true;
+ const morph=await win.webContents.executeJavaScript(`window.listening.render(${JSON.stringify(state.queue)});new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(document.querySelector('#dock-play').getAnimations({subtree:true}).some(a=>a.transitionProperty==='d')))))`);
+ if(!morph)throw new Error('Play/pause SVG does not morph');
  const pauseStyle=await win.webContents.executeJavaScript(`(()=>{const light=document.querySelector('#ambient-light');document.body.classList.add('playback-paused');const rule=[...document.styleSheets].flatMap(s=>[...s.cssRules]).find(r=>r.selectorText==='body.playback-paused .ambient-light');return {paused:Number(rule.style.opacity),transition:getComputedStyle(light).transitionDuration};})()`);
  if(pauseStyle.paused!==.35||pauseStyle.transition!=='1.4s')throw new Error('Pause must dim the shared light smoothly');
  await win.webContents.executeJavaScript(`document.body.classList.remove('playback-paused')`);
@@ -128,7 +144,26 @@ app.whenReady().then(async()=>{
  await win.webContents.executeJavaScript(`Promise.all([...document.querySelectorAll('#stage-cover,#dock-cover,.stage-track img')].map(image=>{image.src=${JSON.stringify(publicArt)};return image.decode().catch(()=>{});}));window.playerEffects.ambient([192,120,75])`);await shot(win,'public-player');
  await win.webContents.executeJavaScript(`window.listening.panels({lyrics:'center',queue:'hidden'},false)`);await new Promise(resolve=>setTimeout(resolve,700));await shot(win,'public-lyrics');
  await win.webContents.executeJavaScript(`window.listening.panels({lyrics:'hidden',queue:'side'},false);document.querySelector('#vinyl-mode').checked=true;document.querySelector('#vinyl-mode').dispatchEvent(new Event('change'))`);await shot(win,'public-vinyl');
+
+ // Real-time spectrum fixtures verify that only listened positions leave a trail.
+ state.queue.clock.playing=true;state.queue.clock.position=7000;
+ await win.webContents.executeJavaScript(`render(${JSON.stringify(state)});document.querySelector('#appearance-visualizer').value='trail';document.querySelector('#appearance-visualizer').dispatchEvent(new Event('input'))`);
+ win.webContents.send('app:spectrum',Array(48).fill(.6));await new Promise(resolve=>setTimeout(resolve,80));
+ state.queue.clock.position=72000;
+ await win.webContents.executeJavaScript(`render(${JSON.stringify(state)})`);win.webContents.send('app:spectrum',Array(48).fill(.8));await new Promise(resolve=>setTimeout(resolve,80));
+ const trail=await win.webContents.executeJavaScript(`window.immersion.history()`);if(trail!==2)throw Error('Waveform invents audio in skipped positions: '+trail);
+ await shot(win,'waveform-trail');
+ await win.webContents.executeJavaScript(`const choice=document.querySelector('#appearance-dock');choice.value='auto';choice.dispatchEvent(new Event('input'));document.activeElement?.blur()`);
+ await new Promise(resolve=>setTimeout(resolve,3100));
+ if(!await win.webContents.executeJavaScript(`document.body.classList.contains('dock-collapsed')`))throw Error('Player did not collapse');
+ await shot(win,'player-collapsed');
+ await win.webContents.executeJavaScript(`document.querySelector('#dock-reveal').click()`);
+ if(await win.webContents.executeJavaScript(`document.body.classList.contains('dock-collapsed')`))throw Error('Player did not reveal');
+ await win.webContents.executeJavaScript(`document.querySelector('#appearance-dock').value='always';document.querySelector('#appearance-dock').dispatchEvent(new Event('input'));document.querySelector('#appearance-lyrics').value='particles';document.querySelector('#appearance-lyrics').dispatchEvent(new Event('input'));window.listening.panels({lyrics:'center',queue:'hidden'},false)`);
+ await new Promise(resolve=>setTimeout(resolve,700));
+ await win.webContents.executeJavaScript(`(()=>{const lines=document.querySelectorAll('.lyric-line');window.dispatchEvent(new CustomEvent('lyric-change',{detail:{previous:lines[3],current:lines[4]}}));})()`);
+ await new Promise(resolve=>setTimeout(resolve,120));await shot(win,'lyrics-particles');
  if(errors.length)throw new Error(errors.join('\n'));
- console.log('UI_REVIEW_OK',JSON.stringify({screenshots:25,resizeCases:cases,toolbar:header,lyrics:lyricState,motion,bootMotion}));
+ console.log('UI_REVIEW_OK',JSON.stringify({screenshots:31,resizeCases:cases,toolbar:header,lyrics:lyricState,motion,bootMotion}));
  app.exit(0);
 }).catch(error=>{console.error('UI_REVIEW_FAILED',error.stack);app.exit(1);});

@@ -11,13 +11,13 @@ class JamPlayer {
     try {
       return await this.browser.executeJavaScript(`(() => {
         const media = document.querySelector('video');
-        const player = document.querySelector('.html5-video-player');
+        const player = document.querySelector('.html5-video-player,#movie_player');
         const data = player?.getVideoData?.() || {};
         const advertisement = !!player?.classList.contains('ad-showing');
         const urlId = new URL(location.href).searchParams.get('v') || new URLSearchParams(location.hash.split('?')[1] || '').get('v');
         const id = advertisement ? urlId : data.video_id || data.videoId || urlId;
         const metadata = navigator.mediaSession?.metadata;
-        return { videoId: id, advertisement, title: advertisement ? '' : document.querySelector('ytmusic-player-bar .title')?.textContent?.trim() || metadata?.title || data.title || id,
+        return { videoId: id, advertisement, ready:media?.readyState||0, hasMedia:!!media, title: advertisement ? '' : document.querySelector('ytmusic-player-bar .title')?.textContent?.trim() || metadata?.title || data.title || id,
           artwork:advertisement?'':metadata?.artwork?.at(-1)?.src||'',artist: advertisement ? '' : metadata?.artist || data.author || '', playing: !!media && !media.paused,
           position: advertisement ? 0 : Math.round((media?.currentTime || 0) * 1000), duration: advertisement ? 0 : Math.round((Number.isFinite(media?.duration) ? media.duration : 0) * 1000) };
       })()`);
@@ -43,9 +43,11 @@ class JamPlayer {
       this.observed = media;
     }
     const current = this.items.find(i => i.id === this.current);
-    return { ok: true, native: this.nativeState?.available ?? false, source:this.nativeState?.source||'', revision: `${this.generation}:${this.revision}`, items: this.items.map(i => ({ ...i, cover:i.id===this.current&&media?.artwork&&(media.artwork.includes('.googleusercontent.com')||!i.cover)?media.artwork:i.cover, current: i.id === this.current })), autoplay: [],
+    if(this.mode==='tv'&&this.nativeState?.source==='tv'&&current?.videoId===media?.videoId){current.title=media.title||current.title;current.artist=media.artist||current.artist;}
+    const nowPlaying=this.mode==='tv'&&media?.hasMedia!==false&&videoId.test(media?.videoId||'')?{id:'playback:'+media.videoId,videoId:media.videoId,title:media.title||media.videoId,artist:media.artist||'',cover:media.artwork||'',current:true}:null;
+    return { ok: true, native: this.nativeState?.available ?? false, source:this.nativeState?.source||'', nowPlaying, revision: `${this.generation}:${this.revision}`, items: this.items.map(i => ({ ...i, cover:i.id===this.current&&media?.artwork&&(media.artwork.includes('.googleusercontent.com')||!i.cover)?media.artwork:i.cover, current: i.id === this.current })), autoplay: [],
       clock: { generation: this.playbackGeneration, sequence: ++this.sequence, sampledAt: Math.round(performance.now()), age: 0,
-        videoId: current?.videoId || '', playbackControl: !!media, playing: !!media?.playing, position: media?.position || 0, duration: media?.duration || 0 } };
+        videoId: current?.videoId || nowPlaying?.videoId || '', playbackControl: !!media, playing: !!media?.playing, position: media?.position || 0, duration: media?.duration || 0 } };
   }
   call(command) {
     const result = this.tail.catch(() => {}).then(() => this.execute(command)); this.tail = result; return result;
@@ -65,7 +67,7 @@ class JamPlayer {
     if(JSON.stringify(this.items)!==JSON.stringify(next)){this.items=next;this.revision++;}
   }
   async ready(id){
-    const result=await this.browser.executeJavaScript(`new Promise(resolve=>{let tries=0;const wait=()=>{const video=document.querySelector('video'),player=document.querySelector('.html5-video-player'),data=player?.getVideoData?.()||{};const current=data.video_id||data.videoId||new URL(location.href).searchParams.get('v');if(video?.readyState>=2&&(current===${JSON.stringify(id)}||player?.classList.contains('ad-showing')))return resolve(true);if(++tries>=100)return resolve(false);setTimeout(wait,100);};wait();})`);
+    const result=await this.browser.executeJavaScript(`new Promise(resolve=>{let tries=0;const wait=()=>{const video=document.querySelector('video'),player=document.querySelector('.html5-video-player,#movie_player'),data=player?.getVideoData?.()||{};const current=data.video_id||data.videoId||new URL(location.href).searchParams.get('v')||new URLSearchParams(location.hash.split('?')[1]||'').get('v');if(video?.readyState>=2&&(current===${JSON.stringify(id)}||player?.classList.contains('ad-showing')))return resolve(true);if(++tries>=100)return resolve(false);setTimeout(wait,100);};wait();})`);
     if(!result)throw new Error('Песня не загрузилась. Открой каталог и проверь сообщение YouTube.');
   }
   async nativeExecute(command,before) {
@@ -104,6 +106,11 @@ class JamPlayer {
   async execute(command) {
     const before = await this.snapshot();
     if (command.op === 'SNAPSHOT' || command.op === 'SYNC') return before;
+    if(this.mode==='tv'&&command.op==='PLAY'&&before.nowPlaying&&command.item===before.nowPlaying.id&&command.videoId===before.nowPlaying.videoId){
+      if(typeof command.playing!=='boolean')return {ok:false,error:'Invalid playing flag'};
+      await this.browser.executeJavaScript(`(async()=>{const v=document.querySelector('video');if(!v)throw Error('Плеер ещё не готов');window.__jamstormPaused=${!command.playing};${command.playing?'await v.play()':'v.pause()'};})()`,true);
+      return {...await this.snapshot(),dispatched:true};
+    }
     if(this.native&&['ADD','PLAY_NEXT','REMOVE','MOVE','PLAY'].includes(command.op))return this.nativeExecute(command,before);
     if(this.native&&['SKIP_NEXT','SKIP_PREVIOUS'].includes(command.op)){
       const index=this.items.findIndex(item=>item.id===this.current)+(command.op==='SKIP_NEXT'?1:-1),item=this.items[index];

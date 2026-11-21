@@ -8,18 +8,20 @@
   const time=ms=>{const seconds=Math.max(0,Math.floor((ms||0)/1000));return Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0');};
   async function call(promise){const value=await promise;if(!value.ok)throw Error(value.error);return value.value;}
   function fail(error){if(typeof message==='function')message(error.message||String(error));}
-  function current(){return queue?.items?.find(row=>row.current);}
+  function current(){return queue?.items?.find(row=>row.current)||queue?.nowPlaying;}
   function image(node,item){
     const src=window.artwork.cover(item);if(node.dataset.source===src)return;node.dataset.source=src;node.src=src;
     node.onload=()=>{if(node.naturalWidth<300&&node.src.includes('maxresdefault'))node.src='https://i.ytimg.com/vi/'+item.videoId+'/hqdefault.jpg';};
     node.onerror=()=>{if(node.src.includes('maxresdefault'))node.src='https://i.ytimg.com/vi/'+item.videoId+'/hqdefault.jpg';else{node.onerror=null;node.src='cover-placeholder.svg';}};
   }
   function updatePage(){
-    const surface=window.surfaceLayout(page,mode);stage.hidden=!surface.sceneVisible;dock.hidden=!surface.dockVisible;
-    document.body.classList.toggle('remote-view',surface.remoteVisible);document.body.classList.toggle('catalog-view',page==='catalog'||mode==='tv'&&page==='music');
+    const surface=window.surfaceLayout(page,mode);stage.hidden=!surface.sceneVisible;dock.hidden=!surface.dockVisible||!current()||['settings','invite'].includes(page);
+    document.body.classList.toggle('has-dock',!dock.hidden);
+    el('catalog-tab').textContent=mode==='tv'?'YouTube TV':'Каталог';
+    document.body.classList.toggle('remote-view',surface.remoteVisible);document.body.classList.toggle('catalog-view',page==='catalog');
     
-    for(const key of ['lyrics','queue'])el('overlay-'+key).disabled=mode==='tv'||page!=='music'||key==='lyrics'&&lyricAvailable===false;
-    document.body.classList.toggle('listening-view',page==='music'&&mode!=='tv');
+    for(const key of ['lyrics','queue'])el('overlay-'+key).disabled=page!=='music'||key==='lyrics'&&lyricAvailable===false;
+    document.body.classList.toggle('listening-view',page==='music');
   }
   let transition;
   function setPanels(value,animate=true){
@@ -57,8 +59,8 @@
     }catch(error){if(request===lyricRequest){lyricsState('Не удалось загрузить',error.message,true);el('lyrics-credit').textContent='Тексты: LRCLIB';}}
   }
   function renderRows(items){
-    const key=JSON.stringify(items);if(key===rowsKey)return;rowsKey=key;el('stage-tracks').replaceChildren();
-    if(!items.length){const empty=document.createElement('li');empty.className='stage-empty';empty.textContent='Начни с песни. Друзья смогут продолжить.';el('stage-tracks').append(empty);return;}
+    const key=JSON.stringify([items,mode,queue?.native]);if(key===rowsKey)return;rowsKey=key;el('stage-tracks').replaceChildren();
+    if(!items.length){const empty=document.createElement('li');empty.className='stage-empty';empty.textContent=mode==='tv'?'YouTube TV пока не отдал очередь. Текущий трек продолжает играть.':'Начни с песни. Друзья смогут продолжить.';el('stage-tracks').append(empty);return;}
     items.forEach((item,index)=>{
       const row=document.createElement('li');row.className='stage-track'+(item.current?' is-current':'');
       const play=document.createElement('button');play.className='stage-track-play';const cover=document.createElement('img');cover.alt='';cover.loading='lazy';image(cover,item);
@@ -80,7 +82,7 @@
     row.ondrop=event=>{event.preventDefault();row.classList.remove('drop-target');try{const data=JSON.parse(event.dataTransfer.getData('application/x-jamstorm-item'));if(data.id!==item.id&&items.some(i=>i.id===data.id))command('MOVE',{item:data.id,target:item.id,revision:data.revision});}catch{}};
   }
   function render(q){
-    if(!q)return;queue=q;clock=q.clock||{};received=performance.now();const now=current(),items=q.items||[];
+    if(!q)return;queue=q;clock=q.clock||{};received=performance.now();const now=current(),items=q.items||[];updatePage();
     el('hero-title').textContent=window.artwork.title(now)||'С чего начнём?';el('hero-title').title=now?.title||'';el('hero-artist').textContent=now?.artist||'Найди любимую песню или открой каталог.';
     el('hero-eyebrow').textContent=now?'Сейчас играет':'Твоя музыка. Ваша очередь.';el('hero-start').hidden=!!now;
     el('dock-title').textContent=window.artwork.title(now)||'Пока тихо';el('dock-artist').textContent=now?.artist||'Выбери первую песню';
@@ -94,11 +96,12 @@
   function tick(){
     const position=Math.min(clock.duration||Infinity,(clock.position||0)+(clock.playing?Math.min(1800,performance.now()-received):0));
     window.playerEffects.tick(position,clock.duration,clock.playing);el('dock-position').textContent=time(position);if(document.activeElement!==el('dock-seek'))el('dock-seek').value=clock.duration?Math.round(position/clock.duration*1000):0;
-    if(!lines.length||panels.lyrics==='hidden')return;let index=-1;for(let i=0;i<lines.length;i++){if(lines[i].time>position)break;index=i;}if(index===highlight)return;highlight=index;
+    if(!lines.length||panels.lyrics==='hidden')return;let index=-1;for(let i=0;i<lines.length;i++){if(lines[i].time>position)break;index=i;}if(index===highlight)return;const previous=highlight;highlight=index;
     const container=el('stage-lines');[...container.children].forEach((line,i)=>{line.classList.toggle('is-active',i===index);line.classList.toggle('is-past',i<index);});
+    window.dispatchEvent(new CustomEvent('lyric-change',{detail:{previous:container.children[previous],current:container.children[index]}}));
     const line=container.children[index];if(line&&performance.now()>manualUntil)container.scrollTo({top:Math.max(0,container.scrollTop+line.getBoundingClientRect().top-container.getBoundingClientRect().top-(container.clientHeight-line.offsetHeight)/2),behavior:reduced?'instant':'smooth'});
   }
-  function openSearch(){if(mode==='tv'){fail(Error('Поиск доступен в режиме YouTube Music'));return;}el('search-dialog').showModal();el('stage-query').focus();}
+  function openSearch(){if(mode==='tv'){tab('catalog').catch(fail);return;}el('search-dialog').showModal();el('stage-query').focus();}
   for(const id of ['stage-search','hero-start','stage-add'])el(id).onclick=openSearch;
   el('search-close').onclick=()=>el('search-dialog').close();el('search-dialog').onclick=event=>{if(event.target===el('search-dialog')){const box=el('search-dialog').getBoundingClientRect();if(event.clientX<box.left||event.clientX>box.right||event.clientY<box.top||event.clientY>box.bottom)el('search-dialog').close();}};
   el('stage-search-form').onsubmit=async event=>{
@@ -115,7 +118,7 @@
   for(const [id,op] of [['dock-previous','SKIP_PREVIOUS'],['dock-next','SKIP_NEXT']])el(id).onclick=()=>command(op,{});
   el('dock-seek').onchange=()=>command('SEEK',{videoId:current()?.videoId,position:Math.round(Number(el('dock-seek').value)/1000*clock.duration)});
   el('stage-lines').onwheel=()=>{manualUntil=performance.now()+4500;};el('stage-lines').addEventListener('touchmove',()=>{manualUntil=performance.now()+4500;},{passive:true});
-  document.addEventListener('keydown',event=>{if(event.code==='Space'&&page==='music'&&mode==='music'&&!el('search-dialog').open&&!['INPUT','TEXTAREA','SELECT','BUTTON'].includes(document.activeElement.tagName)){event.preventDefault();el('dock-play').click();}if((event.ctrlKey||event.metaKey)&&(event.code==='KeyK'||['k','л'].includes(event.key.toLowerCase()))){event.preventDefault();openSearch();}});
+  document.addEventListener('keydown',event=>{if(event.code==='Space'&&page==='music'&&!el('search-dialog').open&&!['INPUT','TEXTAREA','SELECT','BUTTON'].includes(document.activeElement.tagName)){event.preventDefault();el('dock-play').click();}if((event.ctrlKey||event.metaKey)&&(event.code==='KeyK'||['k','л'].includes(event.key.toLowerCase()))){event.preventDefault();openSearch();}});
   for(const key of ['lyrics','queue']){
     const edge=el('peek-'+key),pane=el(key+'-pane');
     const show=()=>{if(page!=='music'||mode==='tv'||panels[key]!=='hidden'||key==='lyrics'&&lyricAvailable===false)return;peekState={...panels};setPanels({...panels,[key]:'side'});};

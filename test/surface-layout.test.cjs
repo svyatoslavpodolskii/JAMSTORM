@@ -15,9 +15,8 @@ test('panels cycle through side, center and hidden without two center surfaces',
 test('remote catalog/TV and local listening scene are always exclusive',()=>{
  for(const mode of ['music','tv'])for(const tab of ['music','catalog','jam','invite','settings']){
    const value=surfaceLayout(tab,mode);assert(!(value.remoteVisible&&value.sceneVisible));
-   if(mode==='tv')assert(!value.sceneVisible&&!value.dockVisible);
    if(tab==='catalog')assert(value.remoteVisible&&!value.dockVisible);
-   if(mode==='music'&&tab==='music')assert(value.sceneVisible&&!value.remoteVisible&&value.dockVisible);
+   if(tab==='music')assert(value.sceneVisible&&!value.remoteVisible&&value.dockVisible);
  }
 });
 test('artwork requests a real high-resolution CDN asset and rejects arbitrary image origins',()=>{

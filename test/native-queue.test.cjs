@@ -15,6 +15,13 @@ test('unavailable native queue never invents a separate current item',async()=>{
  const p=new JamPlayer({});p.sample=async()=>({videoId:'abcdefghijk',title:'Playing'});p.native={read:async()=>({available:false,items:[]})};
  assert.deepEqual((await p.call({op:'SNAPSHOT'})).items,[]);
 });
+test('TV exposes real playback independently when its queue API is unavailable',async()=>{
+ let playing=true;const p=new JamPlayer({executeJavaScript:async()=>{playing=false;}});p.mode='tv';
+ p.sample=async()=>({videoId:'abcdefghijk',title:'Real TV song',artist:'Artist',playing,position:1000,duration:120000});
+ p.native={read:async()=>({available:false,source:'tv',items:[]})};
+ const before=await p.call({op:'SNAPSHOT'});assert.deepEqual(before.items,[]);assert.equal(before.native,false);assert.equal(before.nowPlaying.title,'Real TV song');assert.equal(before.clock.videoId,'abcdefghijk');
+ const after=await p.call({op:'PLAY',item:before.nowPlaying.id,videoId:'abcdefghijk',playing:false});assert.equal(after.clock.playing,false);assert.deepEqual(after.items,[]);
+});
 test('lyrics parse multiple timestamps, fractions, sorting and metadata',()=>{
  assert.deepEqual(parseLrc('[ar:Artist]\n[00:12.50][00:25.1]Hello\n[00:01]Start'),[{time:1000,text:'Start'},{time:12500,text:'Hello'},{time:25100,text:'Hello'}]);
 });

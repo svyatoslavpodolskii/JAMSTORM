@@ -1,6 +1,6 @@
 {
   "name": "jamstorm",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "private": true,
   "license": "MIT",
   "author": "JAMSTORM contributors",
@@ -16,7 +16,8 @@
     "smoke": "node scripts/run.cjs --smoke-test",
     "smoke:live": "node scripts/run.cjs --live-smoke-test",
     "ui:review": "node scripts/electron-task.cjs review",
-    "icons": "node scripts/electron-task.cjs icons"
+    "icons": "node scripts/electron-task.cjs icons",
+    "review:install": "node scripts/installation-review.cjs"
   },
   "devDependencies": {
     "electron": "45.4.1",
@@ -46,14 +47,9 @@
       }
     ],
     "win": {
-      "target": "portable",
+      "target": "dir",
       "signExecutable": false,
       "icon": "assets/icon.ico"
-    },
-    "portable": {
-      "useZip": true,
-      "unicode": true,
-      "artifactName": "Jam-Desktop-${version}-portable.exe"
     }
   },
   "dependencies": {

@@ -10,7 +10,7 @@ async function action(fn) {
   try { await fn(); } catch (error) { message(error.message || 'Не удалось выполнить действие'); }
   finally { busy = false; render(state); }
 }
-function current() { return state.queue?.items?.find(i => i.current); }
+function current() { return state.queue?.items?.find(i => i.current)||state.queue?.nowPlaying; }
 function render(next) {
   state = next;window.listening?.render(next.queue);
   const online = state.phase === 'connected'; const connecting = state.phase === 'connecting';
@@ -29,7 +29,7 @@ function render(next) {
   $('add').disabled = busy;
   const items = Array.isArray(state.queue?.items) ? state.queue.items : [];
   $('queue-count').textContent = `${items.length} треков`;
-  $('empty').hidden = items.length > 0; $('queue-content').hidden = !items.length;
+  $('empty').hidden = items.length > 0||!!state.queue?.nowPlaying; $('queue-content').hidden = !items.length&&!state.queue?.nowPlaying;
   const now = current(); const clock = state.queue?.clock || {};
   $('now-title').textContent = now?.title || 'Выбери трек'; $('now-artist').textContent = now?.artist || '';
   $('plays-on').textContent = state.role !== 'guest' ? 'Сейчас на этом ПК' : 'Сейчас на телефоне';
@@ -64,6 +64,7 @@ async function tab(value) {
   document.querySelector('main .page-heading h1').textContent=({jam:'Твоя очередь',invite:'Вместе звучит лучше',settings:'Настройки'})[value]||'Музыка';
   for (const name of ['music','catalog','jam','invite','settings']) { $(`${name}-tab`).classList.toggle('active', name === value); $(`${name}-tab`).setAttribute('aria-pressed', String(name === value)); }
 }
+$('music-login').onclick=()=>action(async()=>{await tab('catalog');await call(window.jam.login());});
 $('catalog-tab').onclick=()=>action(()=>tab('catalog'));
 $('music-tab').addEventListener('click', () => action(() => tab('music')));
 $('jam-tab').addEventListener('click', () => action(() => tab('jam')));
@@ -101,7 +102,7 @@ let glass = localStorage.getItem('glass') !== 'off';
 function appearance() { document.body.classList.toggle('glass', glass); $('glass').setAttribute('aria-pressed', String(glass));$('glass').textContent=glass?'Включён':'Выключен'; }
 $('glass').onclick = () => { glass = !glass; localStorage.setItem('glass', glass ? 'on' : 'off'); appearance(); };
 appearance(); $('player-mode').value='music';
-$('player-mode').onchange = () => action(async () => { const mode=$('player-mode').value;window.listening.mode(mode);await call(window.jam.mode(mode));await tab('music'); });
+$('player-mode').onchange = () => action(async () => { const mode=$('player-mode').value;window.listening.mode(mode);await call(window.jam.mode(mode));await tab(mode==='tv'?'catalog':'music'); });
 window.jam.onMode(mode=>{ $('player-mode').value=mode;window.listening.mode(mode); });
 let roomSignature = '';
 async function roomRender(value) {
@@ -120,6 +121,7 @@ call(window.jam.addons()).then(settings => { for (const key of ['sponsorblock','
 for (const key of ['sponsorblock','adblock']) $(`addon-${key}`).onchange = async event => { const input=event.target; input.disabled=true; try { await call(window.jam.setAddon(key,input.checked)); } catch(error) { input.checked=!input.checked;message(error.message); } finally {input.disabled=false;} };
 
 $('settings-tab').onclick=()=>action(()=>tab('settings'));
+$('queue-invite').onclick=()=>$('invite-tab').click();
 $('invite-tab').onclick=()=>action(async()=>{await tab('invite');if(!roomState.active)await roomRender(await call(window.jam.room('start')));});
 $('overlay-queue').onclick=()=>action(async()=>{await tab('music');panels(await call(window.jam.panel('queue')));});
 $('overlay-lyrics').onclick=()=>action(async()=>{await tab('music');panels(await call(window.jam.panel('lyrics')));});
@@ -151,3 +153,13 @@ loadPolicy();
 function navigation(value){for(const key of ['back','forward'])for(const button of document.querySelectorAll('[data-navigation="'+key+'"]')){button.disabled=!value[key];if(key==='back'){button.title=value.tv?'Назад в YouTube TV (Esc)':'Назад';button.setAttribute('aria-label',button.title);}}}
 for(const button of document.querySelectorAll('[data-navigation]'))button.onclick=()=>action(async()=>navigation(await call(window.jam.navigate(button.dataset.navigation))));
 window.jam.onNavigation(navigation);call(window.jam.navigation()).then(navigation).catch(()=>{});
+
+let availableUpdate=false;
+$('update-check').onclick=()=>action(async()=>{
+ const button=$('update-check');button.disabled=true;
+ if(availableUpdate)button.textContent='Загрузка…';
+ try{const value=await call(window.jam.update(availableUpdate));availableUpdate=!!value.available&&!!value.canInstall;button.textContent=availableUpdate?'Установить и перезапустить':'Проверить';$('update-hint').textContent=value.available?'Доступна версия '+value.version+(value.canInstall?'':' · скачай установщик с GitHub'):'Установлена актуальная версия';}
+ finally{button.disabled=false;}
+});
+async function checkUpdates(){try{const value=await call(window.jam.update(false));if(value.available){availableUpdate=!!value.canInstall;$('update-hint').textContent='Доступна версия '+value.version;$('update-check').textContent=availableUpdate?'Установить и перезапустить':'Проверить';}}catch{}}
+setTimeout(checkUpdates,8000);setInterval(checkUpdates,6*60*60*1000);

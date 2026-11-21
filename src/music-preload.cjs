@@ -30,6 +30,7 @@ setInterval(()=>{
  let level=0;
  if(!video.paused){analysis.analyser.getByteFrequencyData(analysis.samples);level=Math.min(1,Math.sqrt(analysis.samples.slice(1,48).reduce((sum,value)=>sum+value*value,0)/47)/180);}
  ipcRenderer.send('player:level',level);
+ if(analysis)ipcRenderer.send('player:spectrum',Array.from(analysis.samples.slice(1,49),value=>video.paused?0:value/255));
  const light=document.querySelector('.jamstorm-ambient');if(light)light.style.opacity=String(.38+level*.13);
 },160);
 window.addEventListener('pagehide',stopAnalysis);

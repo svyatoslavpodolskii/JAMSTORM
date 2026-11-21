@@ -6,6 +6,6 @@ test('cover lighting follows the colored artwork rather than black margins or wh
  assert.deepEqual(dominantColor(pixels),[210,100,30]);
 });
 test('monochrome and missing artwork keep a calm neutral ambient',()=>{
- assert.deepEqual(dominantColor(Buffer.alloc(0)),[154,125,104]);
- assert.deepEqual(dominantColor(Buffer.from([120,120,120,255])),[154,125,104]);
+ assert.deepEqual(dominantColor(Buffer.alloc(0)),[170,174,180]);
+ assert.deepEqual(dominantColor(Buffer.from([120,120,120,255])),[120,120,120]);
 });

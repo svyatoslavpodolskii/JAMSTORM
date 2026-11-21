@@ -25,7 +25,7 @@ npm run icons
 npm run build
 ```
 
-Portable: dist/JAMSTORM-0.6.2-portable.exe. UI-review использует управляемые данные и создаёт снимки в artifacts/ui-review; исходные картинки публикации — .github/media. Публичные снимки содержат собственную обложку/текст. Изменение источника assets/icon-source.svg требует npm run icons.
+Установщик: dist/JAMSTORM-0.7.0-setup.exe. Проверка установки в папку с пробелами: node scripts/installation-review.cjs. UI-review использует управляемые данные и создаёт снимки в artifacts/ui-review; исходные картинки публикации — .github/media. Публичные снимки содержат собственную обложку/текст. Изменение источника assets/icon-source.svg требует npm run icons.
 
 Если среда выставляет ELECTRON_RUN_AS_NODE, используйте npm-команды: scripts/run.cjs и electron-task.cjs удаляют переменную перед запуском GUI. Обычный node scripts/ui-review.cjs не запускает Electron.
 
@@ -49,4 +49,4 @@ UI: stage.js — сцена, текст, drag & drop, временные пан�
 
 ## Релиз
 
-Обновить версии package.json, только корневые версии package-lock.json и scripts/portable.nsi; никогда не заменять номер версии по всему lockfile. Выполнить проверки, собрать EXE и отдельно запустить готовый EXE с --smoke-test. Создать SHA256SUMS, коммит и тег. Загрузить EXE и SHA в GitHub Release. Публикация — из учётной записи разработчика; токены не сохраняются в репозитории. Скрипт публикации конкретного рабочего окружения не является обязательным для продолжения: можно использовать GitHub UI или gh release create.
+Обновить версии package.json, только корневые версии package-lock.json; никогда не заменять номер версии по всему lockfile. Выполнить проверки, собрать EXE и отдельно запустить готовый EXE с --smoke-test. Создать SHA256SUMS, коммит и тег. Загрузить EXE и SHA в GitHub Release. Публикация — из учётной записи разработчика; токены не сохраняются в репозитории. Скрипт публикации конкретного рабочего окружения не является обязательным для продолжения: можно использовать GitHub UI или gh release create.
