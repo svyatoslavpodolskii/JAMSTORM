@@ -2,7 +2,7 @@
 html,body,ytmusic-app{background:transparent!important;--ytmusic-color-black1:transparent;--ytmusic-color-black2:#20273360;--ytmusic-color-black3:#20273370;--yt-spec-base-background:transparent}
 ytmusic-app{position:relative;z-index:1}
 ytmusic-browse-response,ytmusic-player-page,#page-manager,#background,ytmusic-guide-renderer,#guide{background:transparent!important}
-ytmusic-nav-bar{background:#1c243266!important;backdrop-filter:blur(28px) saturate(145%);border-bottom:1px solid #ffffff14}
+ytmusic-nav-bar{background:#ffffff03!important;backdrop-filter:blur(28px) saturate(110%);border-bottom:1px solid #ffffff14}
 ytmusic-player-bar{background:#1c243299!important;backdrop-filter:blur(28px);border-top:1px solid #ffffff18}
 ytmusic-search-box #search-container{border-radius:20px;background:#ffffff12!important;backdrop-filter:blur(20px)}
 .jamstorm-ambient{position:fixed;inset:-12%;z-index:0;pointer-events:none;background:radial-gradient(ellipse at 22% 20%,rgb(var(--jamstorm-ambient,146 106 82) / .75),transparent 64%),radial-gradient(ellipse at 90% 85%,rgb(var(--jamstorm-ambient,146 106 82) / .45),transparent 60%);transition:opacity 1500ms ease-out;filter:blur(28px)}
@@ -11,3 +11,9 @@ ytmusic-search-box #search-container{border-radius:20px;background:#ffffff12!imp
 .background-gradient,ytmusic-browse-response .background,#guide-wrapper,#mini-guide-background{background:transparent!important;background-image:none!important}
 
 html{color-scheme:normal!important}
+
+#nav-bar-background{background:transparent!important;background-image:none!important}
+
+/* Use the same underlying JAMSTORM material and album light as the listening scene.
+   Native immersive artwork is an actual <img>, not a CSS background. */
+ytmusic-browse-response #background.immersive-background,.jamstorm-ambient{display:none!important}

@@ -31,6 +31,7 @@ app.whenReady().then(async()=>{
  const win=await make('index.html',1320,880);
  await new Promise(resolve=>setTimeout(resolve,120));
  const bootMotion=await win.webContents.executeJavaScript(`document.getAnimations().filter(a=>a.playState==='running').map(a=>a.animationName||'')`);
+ await win.webContents.executeJavaScript(`document.body.classList.add('native-material');document.documentElement.style.background='linear-gradient(125deg,#e99b44,#198eae 48%,#c54434)'`);
  await shot(win,'boot-vortex');
  if(!bootMotion.includes('fire-spiral')||!bootMotion.includes('boot-mark'))throw new Error('Startup animation did not play: '+bootMotion);
  await new Promise(resolve=>setTimeout(resolve,1400));await win.webContents.executeJavaScript(`tab('jam')`);await shot(win,'01-empty-queue');
@@ -107,6 +108,10 @@ app.whenReady().then(async()=>{
  await win.webContents.executeJavaScript(`window.listening.render({...${JSON.stringify(state.queue)},clock:{...${JSON.stringify(state.queue.clock)},playing:false}})`);await new Promise(resolve=>setTimeout(resolve,450));
  await win.webContents.executeJavaScript(`window.listening.render({...${JSON.stringify(state.queue)},clock:{...${JSON.stringify(state.queue.clock)},playing:true}})`);await new Promise(resolve=>setTimeout(resolve,50));
  const morph=await win.webContents.executeJavaScript(`document.querySelector('#dock-play').getAnimations({subtree:true}).some(a=>a.transitionProperty==='d')`);if(!morph)throw new Error('Play/pause SVG does not morph');
+ const pauseStyle=await win.webContents.executeJavaScript(`(()=>{const light=document.querySelector('#ambient-light');document.body.classList.add('playback-paused');const rule=[...document.styleSheets].flatMap(s=>[...s.cssRules]).find(r=>r.selectorText==='body.playback-paused .ambient-light');return {paused:Number(rule.style.opacity),transition:getComputedStyle(light).transitionDuration};})()`);
+ if(pauseStyle.paused!==.35||pauseStyle.transition!=='1.4s')throw new Error('Pause must dim the shared light smoothly');
+ await win.webContents.executeJavaScript(`document.body.classList.remove('playback-paused')`);
+
 
  await win.webContents.executeJavaScript(`(()=>{const rows=document.querySelectorAll('#stage-tracks .stage-track'),data=new DataTransfer();rows[2].dispatchEvent(new DragEvent('dragstart',{dataTransfer:data,bubbles:true}));rows[1].dispatchEvent(new DragEvent('drop',{dataTransfer:data,bubbles:true}));})()`);
  await new Promise(resolve=>setTimeout(resolve,100));if(state.queue.items[1].id!=='3')throw new Error('Drag drop did not move native queue fixture');

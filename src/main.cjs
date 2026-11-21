@@ -26,7 +26,7 @@ const isLocalPage = require('./local-page.cjs').localPageGuard(path.join(__dirna
 const remoteAllowed = value => { try { const u = new URL(value); return u.protocol === 'https:' && (['music.youtube.com', 'accounts.google.com', 'consent.youtube.com', 'consent.google.com'].includes(u.hostname) || u.hostname === 'www.youtube.com' && (u.pathname === '/tv' || u.pathname.startsWith('/tv/'))); } catch { return false; } };
 function layout() {
   if(!window||!music)return;
-  const [width,height]=window.getContentSize(),full=window.isFullScreen(),tv=mode==='tv'&&selectedTab==='music',top=full?48:72,inset=0;
+  const [width,height]=window.getContentSize(),full=window.isFullScreen(),tv=mode==='tv'&&selectedTab==='music',top=full?60:72,inset=0;
   music.setBounds({x:inset,y:top,width:width-inset*2,height:Math.max(0,height-top-inset)});
   music.setVisible(require('./ui/surface-layout.js')(selectedTab,mode).remoteVisible);
 }
@@ -86,7 +86,8 @@ app.whenReady().then(async () => {
   window.contentView.addChildView(music);
   const fullscreen=()=>{layout();send('app:fullscreen',window.isFullScreen());};
   window.on('enter-full-screen',fullscreen);window.on('leave-full-screen',fullscreen);
-  for(const wc of [window.webContents,music.webContents])wc.on('before-input-event',(e,input)=>{if(input.type==='keyDown'&&(input.control||input.meta)&&(input.code==='KeyK'||['k','л'].includes(input.key.toLowerCase()))&&mode==='music'){e.preventDefault();selectedTab='music';layout();send('app:search-open',{});window.webContents.focus();}if(input.type==='keyDown'&&!input.isAutoRepeat&&(input.key==='F11'||input.key==='Escape'&&window.isFullScreen())){e.preventDefault();window.setFullScreen(input.key==='F11'?!window.isFullScreen():false);}});
+  let tvBackPendingUntil=0;
+  for(const wc of [window.webContents,music.webContents])wc.on('before-input-event',(e,input)=>{if(wc===music.webContents&&input.type==='keyDown'&&input.key==='Escape'&&tvBackPendingUntil>Date.now()){tvBackPendingUntil=0;return;}if(input.type==='keyDown'&&(input.control||input.meta)&&(input.code==='KeyK'||['k','л'].includes(input.key.toLowerCase()))&&mode==='music'){e.preventDefault();selectedTab='music';layout();send('app:search-open',{});window.webContents.focus();}if(input.type==='keyDown'&&!input.isAutoRepeat&&(input.key==='F11'||input.key==='Escape'&&window.isFullScreen())){e.preventDefault();window.setFullScreen(input.key==='F11'?!window.isFullScreen():false);}});
   for (const event of ['will-navigate', 'will-redirect']) music.webContents.on(event, (e, url) => { if (!remoteAllowed(url)) e.preventDefault(); });
   music.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   music.webContents.on('did-start-loading', () => send('player:state', { phase: 'loading' }));
@@ -112,10 +113,10 @@ app.whenReady().then(async () => {
   const handle = (name, fn) => ipcMain.handle(name, async (event, ...args) => {
     try { guard(event);return { ok: true, value: await fn(...args) }; } catch (e) { return { ok: false, error: e?.message||'Плеер ещё загружается. Попробуй ещё раз.' }; }
   });
-  const navigationState=()=>({back:music.webContents.navigationHistory.canGoBack(),forward:music.webContents.navigationHistory.canGoForward()});
+  const navigationState=()=>({tv:mode==='tv',back:mode==='tv'||music.webContents.navigationHistory.canGoBack(),forward:music.webContents.navigationHistory.canGoForward()});
   for(const event of ['did-navigate','did-navigate-in-page','did-stop-loading'])music.webContents.on(event,()=>send('app:navigation',navigationState()));
   handle('app:navigation',navigationState);
-  handle('app:navigate',async action=>{const history=music.webContents.navigationHistory;if(action==='back'&&history.canGoBack())history.goBack();else if(action==='forward'&&history.canGoForward())history.goForward();else if(action==='home')await music.webContents.loadURL(home());else if(!['back','forward'].includes(action))throw Error('Unknown navigation action');return navigationState();});
+  handle('app:navigate',async action=>{const history=music.webContents.navigationHistory;if(action==='back'&&mode==='tv'){music.webContents.focus();tvBackPendingUntil=Date.now()+1000;music.webContents.sendInputEvent({type:'keyDown',keyCode:'Escape'});music.webContents.sendInputEvent({type:'keyUp',keyCode:'Escape'});}else if(action==='back'&&history.canGoBack())history.goBack();else if(action==='forward'&&history.canGoForward())history.goForward();else if(action==='home')await music.webContents.loadURL(home());else if(!['back','forward'].includes(action))throw Error('Unknown navigation action');return navigationState();});
   function controlledCommand(command,context={}){if(['SNAPSHOT','SYNC'].includes(command.op))return player.call(command);return policy.run(command,context.actor,cmd=>player.call(cmd),()=>player.call({op:'SNAPSHOT'}),id=>player.native.metadata(id));}
   handle('app:policy',value=>{if(value){policy.set(value);music.webContents.send('filter:enabled',policy.settings.blockExplicit);}return policy.settings;});
   handle('jam:state', () => jam.view());
@@ -213,6 +214,15 @@ app.whenReady().then(async () => {
       if(!music.getVisible()||!tvExclusive)throw new Error('TV overlays the local scene');
       if(music.getBounds().y!==72)throw new Error('TV content overlaps the toolbar');
       await window.webContents.executeJavaScript(`tab('catalog')`);if(mode!=='tv'||player.mode!=='tv'||!music.getVisible())throw new Error('Catalog unexpectedly changed the TV mode');
+      await music.webContents.loadURL('about:blank');music.webContents.navigationHistory.clear();
+      await music.webContents.executeJavaScript(`window.backEvents=[];addEventListener('keydown',e=>backEvents.push({key:e.key,trusted:e.isTrusted}));`);
+      window.setFullScreen(true);await new Promise(resolve=>setTimeout(resolve,300));
+      const tvBack=await window.webContents.executeJavaScript(`window.jam.navigate('back')`);
+      await new Promise(resolve=>setTimeout(resolve,150));
+      const backEvents=await music.webContents.executeJavaScript(`window.backEvents`);
+      if(!tvBack.ok||!tvBack.value.back||!window.isFullScreen()||!backEvents.some(e=>e.key==='Escape'&&e.trusted))throw new Error('TV Back must deliver trusted Escape without history or leaving fullscreen');
+      window.setFullScreen(false);await new Promise(resolve=>setTimeout(resolve,200));
+      console.log('TV_BACK_ESCAPE',JSON.stringify(backEvents));
       await applyMode('music');send('app:mode','music');await window.webContents.executeJavaScript(`tab('music')`);
       if(music.getVisible())throw new Error('Native Music unexpectedly overlays the listening scene');
       await window.webContents.executeJavaScript(`tab('catalog')`);if(!music.getVisible())throw new Error('Catalog is not visible');
@@ -220,7 +230,7 @@ app.whenReady().then(async () => {
 
       window.webContents.emit('before-input-event',{preventDefault(){}},{type:'keyDown',key:'F11',isAutoRepeat:false});
       await new Promise(resolve=>setTimeout(resolve,400));
-      if(!window.isFullScreen()||music.getBounds().y!==48)throw new Error('Fullscreen layout regression');
+      if(!window.isFullScreen()||music.getBounds().y!==60)throw new Error('Fullscreen layout regression');
       const hidden=await window.webContents.executeJavaScript(`getComputedStyle(document.querySelector('.topbar')).display==='none'`);
       if(!hidden)throw new Error('Fullscreen topbar still visible');
       window.setFullScreen(false);await new Promise(resolve=>setTimeout(resolve,300));
@@ -267,6 +277,14 @@ app.whenReady().then(async () => {
         if (playback?.videoId !== '5NV6Rdv1a3I' || playback.playing) throw new Error('TV player adapter failed or manual pause lost');
         const baseline=await player.call({op:'SNAPSHOT'});
         if(!baseline.native)throw new Error('Native queue not readable');
+        await music.webContents.executeJavaScript(`for(const el of document.querySelectorAll('*'))if(el.clientHeight>200&&el.scrollHeight>el.clientHeight+500)el.scrollTop=650`);
+        await new Promise(resolve=>setTimeout(resolve,400));
+        const catalogBackdrop=await music.webContents.executeJavaScript(`({images:[...document.querySelectorAll('ytmusic-browse-response #background.immersive-background')].every(el=>getComputedStyle(el).display==='none'),extraLight:getComputedStyle(document.querySelector('.jamstorm-ambient')).display})`);
+        if(!catalogBackdrop.images||catalogBackdrop.extraLight!=='none')throw new Error('Catalog adds its own clipped background instead of the shared player material');
+        console.log('CATALOG_SHARED_BACKGROUND',JSON.stringify(catalogBackdrop));
+        const scrolledHeader=await music.webContents.executeJavaScript(`({background:getComputedStyle(document.querySelector('#nav-bar-background')).backgroundColor,nav:getComputedStyle(document.querySelector('ytmusic-nav-bar')).backgroundColor})`);
+        console.log('CATALOG_SCROLLED_HEADER',JSON.stringify(scrolledHeader));
+        if(scrolledHeader.background!=='rgba(0, 0, 0, 0)'||scrolledHeader.nav!=='rgba(255, 255, 255, 0.01)')throw new Error('Catalog header becomes opaque on scroll');
         const catalogGlass=await music.webContents.executeJavaScript(`({body:getComputedStyle(document.body).backgroundColor,app:getComputedStyle(document.querySelector('ytmusic-app')).backgroundColor,ambient:!!document.querySelector('.jamstorm-ambient'),gradient:document.querySelector('.background-gradient')?getComputedStyle(document.querySelector('.background-gradient')).backgroundImage:'none',guide:document.querySelector('#guide-wrapper')?getComputedStyle(document.querySelector('#guide-wrapper')).backgroundColor:'rgba(0, 0, 0, 0)'})`);
         console.log('CATALOG_GLASS',JSON.stringify(catalogGlass));if(catalogGlass.body!=='rgba(0, 0, 0, 0)'||!catalogGlass.ambient||catalogGlass.gradient!=='none'||catalogGlass.guide!=='rgba(0, 0, 0, 0)')throw new Error('Catalog opacity or audio light regression');
         let markedProbe=false;

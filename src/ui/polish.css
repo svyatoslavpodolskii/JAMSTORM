@@ -85,3 +85,9 @@ body.intro-running{background:transparent!important}
 .remote-navigation{display:none;gap:2px;align-items:center;padding-left:7px;border-left:1px solid #ffffff14}
 .remote-view .remote-navigation{display:flex}.remote-navigation button{display:grid;place-items:center;width:30px;height:32px;padding:0;border:0;border-radius:10px;color:#ccd2dc;background:transparent}.remote-navigation button:hover:not(:disabled){background:#ffffff0b}.remote-navigation button:disabled{opacity:.25}
 @media(max-width:950px){.remote-navigation{padding-left:3px}.remote-navigation button{width:27px}}
+
+/* Pause keeps the palette, with a gentle reduction in album light. */
+body.playback-paused .ambient-light{opacity:.35}
+
+/* Fade only album color near the native title bar; retain the underlying Mica. */
+.ambient-light{mask-image:linear-gradient(to bottom,transparent calc(15vh + 10px),#000 calc(15vh + 150px))}

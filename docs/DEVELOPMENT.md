@@ -25,7 +25,7 @@ npm run icons
 npm run build
 ```
 
-Portable: dist/JAMSTORM-0.6.1-portable.exe. UI-review использует управляемые данные и создаёт снимки в artifacts/ui-review; исходные картинки публикации — .github/media. Публичные снимки содержат собственную обложку/текст. Изменение источника assets/icon-source.svg требует npm run icons.
+Portable: dist/JAMSTORM-0.6.2-portable.exe. UI-review использует управляемые данные и создаёт снимки в artifacts/ui-review; исходные картинки публикации — .github/media. Публичные снимки содержат собственную обложку/текст. Изменение источника assets/icon-source.svg требует npm run icons.
 
 Если среда выставляет ELECTRON_RUN_AS_NODE, используйте npm-команды: scripts/run.cjs и electron-task.cjs удаляют переменную перед запуском GUI. Обычный node scripts/ui-review.cjs не запускает Electron.
 

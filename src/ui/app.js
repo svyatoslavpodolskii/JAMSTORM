@@ -148,6 +148,6 @@ async function loadPolicy(){try{const value=await call(window.jam.policy());for(
 for(const id of ['block-explicit','hide-explicit','guest-reorder','guest-limit'])$(id).onchange=async()=>{try{await call(window.jam.policy({blockExplicit:$('block-explicit').checked,hideExplicit:$('hide-explicit').checked,guestReorder:$('guest-reorder').checked,guestLimit:Number($('guest-limit').value)}));}catch(error){message(error.message);await loadPolicy();}};
 loadPolicy();
 
-function navigation(value){for(const key of ['back','forward'])for(const button of document.querySelectorAll('[data-navigation="'+key+'"]'))button.disabled=!value[key];}
+function navigation(value){for(const key of ['back','forward'])for(const button of document.querySelectorAll('[data-navigation="'+key+'"]')){button.disabled=!value[key];if(key==='back'){button.title=value.tv?'Назад в YouTube TV (Esc)':'Назад';button.setAttribute('aria-label',button.title);}}}
 for(const button of document.querySelectorAll('[data-navigation]'))button.onclick=()=>action(async()=>navigation(await call(window.jam.navigate(button.dataset.navigation))));
 window.jam.onNavigation(navigation);call(window.jam.navigation()).then(navigation).catch(()=>{});
