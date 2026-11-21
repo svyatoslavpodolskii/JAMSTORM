@@ -1,4 +1,20 @@
 const { ipcRenderer } = require('electron');
+// Keep catalog cards below the fixed header without changing YouTube's player
+// geometry or its document scroll/history. A paint clip extends beyond the
+// small, overflow-visible #content box used by the current site layout.
+let clipFrame=0,lastClip='',appliedClip='',clippedContent=null;
+const clipResize=new ResizeObserver(scheduleClip),clipMutation=new MutationObserver(scheduleClip);
+function updateHeaderClip(){
+ clipFrame=0;if(location.hostname!=='music.youtube.com')return;
+ const content=document.querySelector('#content'),nav=document.querySelector('ytmusic-nav-bar');if(!content||!nav)return;
+ const height=document.fullscreenElement||getComputedStyle(nav).visibility==='hidden'?0:nav.getBoundingClientRect().height;
+ const edge=Math.max(0,Math.ceil(height-content.getBoundingClientRect().top));
+ const clip=height?`polygon(-100vw ${edge}px,200vw ${edge}px,200vw 100000px,-100vw 100000px)`:'none';
+ if(content!==clippedContent){clipResize.disconnect();clipMutation.disconnect();for(const node of [content,nav]){clipResize.observe(node);clipMutation.observe(node,{attributes:true,attributeFilter:['style','class']});}}
+ if(content!==clippedContent||clip!==lastClip||content.style.clipPath!==appliedClip){content.style.clipPath=clip;clippedContent=content;lastClip=clip;appliedClip=content.style.clipPath;}
+}
+function scheduleClip(){if(!clipFrame)clipFrame=requestAnimationFrame(updateHeaderClip);}
+document.addEventListener('DOMContentLoaded',scheduleClip);window.addEventListener('scroll',scheduleClip,{passive:true,capture:true});window.addEventListener('resize',scheduleClip);document.addEventListener('fullscreenchange',scheduleClip);setInterval(scheduleClip,1000);
 // No privileged API is exposed to YouTube Music or Google sign-in pages.
 const advertised = new WeakMap();
 for (const name of ['playing','timeupdate']) document.addEventListener(name,event=>{if(event.target instanceof HTMLMediaElement) advertised.set(event.target,!!document.querySelector('.html5-video-player.ad-showing'));},true);

@@ -24,11 +24,13 @@ Function .onInit
   ${GetOptions} $R0 "/PID=" $R2
   IfErrors done
   System::Call 'kernel32::OpenProcess(i 0x00100000, i 0, i R2) p .r3'
-  StrCmp $3 0 done
+  StrCmp $3 0 processExited
   System::Call 'kernel32::WaitForSingleObject(p r3, i 30000) i .r4'
   System::Call 'kernel32::CloseHandle(p r3)'
-  StrCmp $4 0 done
+  StrCmp $4 0 processExited
   Abort
+  processExited:
+  Sleep 350
   done:
 FunctionEnd
 Section

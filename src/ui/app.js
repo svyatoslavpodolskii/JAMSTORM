@@ -99,7 +99,7 @@ window.jam.onPlayer(value => {
 call(window.jam.state()).then(render).catch(error => message(error.message));
 // Appearance remains local; it never changes the remote site's privileges.
 let glass = localStorage.getItem('glass') !== 'off';
-function appearance() { document.body.classList.toggle('glass', glass); $('glass').setAttribute('aria-pressed', String(glass));$('glass').textContent=glass?'Включён':'Выключен'; }
+function appearance() { document.body.classList.toggle('glass', glass); $('glass').setAttribute('aria-pressed', String(glass));$('glass').textContent=glass?'Включён':'Выключен';window.dispatchEvent(new Event('glass-change')); }
 $('glass').onclick = () => { glass = !glass; localStorage.setItem('glass', glass ? 'on' : 'off'); appearance(); };
 appearance(); $('player-mode').value='music';
 $('player-mode').onchange = () => action(async () => { const mode=$('player-mode').value;window.listening.mode(mode);await call(window.jam.mode(mode));await tab(mode==='tv'?'catalog':'music'); });
@@ -140,6 +140,7 @@ let visualMotion=localStorage.getItem('ambient-sound')!=='off'&&!matchMedia('(pr
 $('ambient-sound').checked=visualMotion;call(window.jam.visuals(visualMotion)).catch(()=>{});
 $('ambient-sound').onchange=()=>{visualMotion=$('ambient-sound').checked;localStorage.setItem('ambient-sound',visualMotion?'on':'off');call(window.jam.visuals(visualMotion)).catch(()=>{});if(!visualMotion)window.playerEffects.level(0);};
 window.jam.onAmbient(color=>{if(Array.isArray(color)&&color.length===3&&color.every(value=>Number.isInteger(value)&&value>=0&&value<=255))window.playerEffects.ambient(color);});
+window.jam.onPalette(colors=>window.playerEffects.palette(colors));
 window.jam.onLevel(level=>{if(visualMotion)window.playerEffects.level(level);});
 
 for(const button of document.querySelectorAll('#fullscreen-nav [data-page]'))button.onclick=()=>action(()=>tab(button.dataset.page));

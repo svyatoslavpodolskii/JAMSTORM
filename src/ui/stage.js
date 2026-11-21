@@ -96,6 +96,7 @@
   function tick(){
     const position=Math.min(clock.duration||Infinity,(clock.position||0)+(clock.playing?Math.min(1800,performance.now()-received):0));
     window.playerEffects.tick(position,clock.duration,clock.playing);el('dock-position').textContent=time(position);if(document.activeElement!==el('dock-seek'))el('dock-seek').value=clock.duration?Math.round(position/clock.duration*1000):0;
+    const live=el('stage-tracks').querySelector('.is-current .track-live');if(live)live.textContent=clock.playing?'Играет':'Пауза';
     if(!lines.length||panels.lyrics==='hidden')return;let index=-1;for(let i=0;i<lines.length;i++){if(lines[i].time>position)break;index=i;}if(index===highlight)return;const previous=highlight;highlight=index;
     const container=el('stage-lines');[...container.children].forEach((line,i)=>{line.classList.toggle('is-active',i===index);line.classList.toggle('is-past',i<index);});
     window.dispatchEvent(new CustomEvent('lyric-change',{detail:{previous:container.children[previous],current:container.children[index]}}));

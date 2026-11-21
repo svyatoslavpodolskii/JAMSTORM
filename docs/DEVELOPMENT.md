@@ -25,7 +25,7 @@ npm run icons
 npm run build
 ```
 
-Установщик: dist/JAMSTORM-0.7.0-setup.exe. Проверка установки в папку с пробелами: node scripts/installation-review.cjs. UI-review использует управляемые данные и создаёт снимки в artifacts/ui-review; исходные картинки публикации — .github/media. Публичные снимки содержат собственную обложку/текст. Изменение источника assets/icon-source.svg требует npm run icons.
+Установщик: dist/JAMSTORM-0.7.1-setup.exe. Проверка установки в папку с пробелами: node scripts/installation-review.cjs. UI-review использует управляемые данные и создаёт снимки в artifacts/ui-review; исходные картинки публикации — .github/media. Публичные снимки содержат собственную обложку/текст. Изменение источника assets/icon-source.svg требует npm run icons.
 
 Если среда выставляет ELECTRON_RUN_AS_NODE, используйте npm-команды: scripts/run.cjs и electron-task.cjs удаляют переменную перед запуском GUI. Обычный node scripts/ui-review.cjs не запускает Electron.
 
@@ -50,3 +50,7 @@ UI: stage.js — сцена, текст, drag & drop, временные пан�
 ## Релиз
 
 Обновить версии package.json, только корневые версии package-lock.json; никогда не заменять номер версии по всему lockfile. Выполнить проверки, собрать EXE и отдельно запустить готовый EXE с --smoke-test. Создать SHA256SUMS, коммит и тег. Загрузить EXE и SHA в GitHub Release. Публикация — из учётной записи разработчика; токены не сохраняются в репозитории. Скрипт публикации конкретного рабочего окружения не является обязательным для продолжения: можно использовать GitHub UI или gh release create.
+
+Визуальная проверка каталога: `node scripts/run.cjs --catalog-review`. Проверяет тему/прозрачность/paint clip в native DOM. Скриншоты WebContentsView с прозрачностью не заменяют проверку полного окна через computer-use.
+
+Smoke-runner ждёт маркер `SMOKE_EXIT` после всех assertions. Если Chromium задерживает тестовый процесс после закрытия формы Google, runner завершает его через 2 секунды и явно пишет `SMOKE_TEARDOWN_FORCED`. Маркер ошибки сохраняет ненулевой exit code; обычный запуск приложения не использует этот механизм.

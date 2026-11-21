@@ -13,6 +13,7 @@ const handle=(key,fn)=>ipcMain.handle(key,async(_event,...args)=>{try{return {ok
 handle('app:navigation',()=>({back:true,forward:false}));handle('app:navigate',()=>({back:false,forward:true}));
 handle('app:appearance',()=>{});
 handle('app:frame',()=>({overlay:true}));
+handle('app:presentation',value=>value);handle('app:window',()=>({maximized:false}));
 handle('app:update',()=>({available:false}));
 handle('app:policy',()=>({blockExplicit:true,hideExplicit:true,guestLimit:3,guestReorder:false}));handle('app:open-browser',()=>{});
 handle('app:material',value=>({material:value,supported:true}));handle('app:visuals',()=>true);
@@ -25,11 +26,17 @@ handle('room:state',()=>room);handle('room:start',()=>room={active:true,url:'htt
 handle('room:qr',()=>QRCode.toDataURL(room.url));handle('room:stop',()=>room={active:false});handle('room:copy',()=>{});
 handle('app:lyrics',()=>({lines:Array.from({length:14},(_,i)=>({time:i*10000,text:['Музыка собирает нас','В одном ритме, в одном месте','Каждый выбирает свой трек','И вечер звучит по-новому'][i%4]})),source:'Review fixture'}));
 async function make(file,width,height){
- const win=new BrowserWindow({width,height,backgroundColor:'#151a24',show:false,webPreferences:{offscreen:true,sandbox:true,contextIsolation:true,preload:path.join(__dirname,'../src/preload.cjs')}});windows.push(win);
+ const win=new BrowserWindow({width,height,backgroundColor:'#151a24',show:false,webPreferences:{offscreen:true,backgroundThrottling:false,sandbox:true,contextIsolation:true,preload:path.join(__dirname,'../src/preload.cjs')}});windows.push(win);
  win.webContents.on('console-message',event=>{if(event.level==='error'&&!event.message.includes('ERR_'))errors.push(event.message);});
  await win.loadFile(path.join(__dirname,'../src/ui',file));return win;
 }
-async function shot(win,name){await new Promise(resolve=>setTimeout(resolve,300));fs.writeFileSync(path.join(out,name+'.png'),(await win.webContents.capturePage(undefined,{stayHidden:true})).toPNG());}
+async function shot(win,name){
+ await new Promise(resolve=>setTimeout(resolve,300));
+ for(let attempt=0;attempt<3;attempt++)try{fs.writeFileSync(path.join(out,name+'.png'),(await win.webContents.capturePage(undefined,{stayHidden:true})).toPNG());return;}catch(error){
+  if(attempt===2||!/UnknownVizError|Current display surface not available/.test(error.message))throw Error('Screenshot '+name+': '+error.message);
+  if(win.webContents.isOffscreen())win.webContents.invalidate();await new Promise(resolve=>setTimeout(resolve,200));
+ }
+}
 app.whenReady().then(async()=>{
  const win=await make('index.html',1320,880);
  await win.webContents.executeJavaScript(`document.querySelector('#appearance-dock').value='always';document.querySelector('#appearance-dock').dispatchEvent(new Event('input'))`);
@@ -50,6 +57,8 @@ app.whenReady().then(async()=>{
  if(settingsEnd.bottom>settingsEnd.viewport||!settingsEnd.dock)throw Error('Settings end is clipped: '+JSON.stringify(settingsEnd));
  await shot(win,'settings-end');
  await win.webContents.executeJavaScript(`document.querySelector('main').scrollTop=0;document.querySelector('#appearance-toggle').click();for(const [key,value] of Object.entries({background:'artwork',opacity:35,grain:45})){const el=document.querySelector('#appearance-'+key);el.value=value;el.dispatchEvent(new Event('input'));}`);
+ const presetRoundtrip=await win.webContents.executeJavaScript(`(()=>{const select=document.querySelector('#appearance-preset');select.value='quiet';select.dispatchEvent(new Event('change'));const opaque=!document.body.classList.contains('glass')&&document.body.dataset.translucent==='false';select.value='cover';select.dispatchEvent(new Event('change'));const material=document.querySelector('#window-material');material.value='none';material.dispatchEvent(new Event('change'));const ordinary=document.body.dataset.translucent==='false';material.value='acrylic';material.dispatchEvent(new Event('change'));document.querySelector('#preset-name').value='Review custom';document.querySelector('#preset-save').click();const id=select.value,count=JSON.parse(localStorage.getItem('appearance-custom')).length;document.querySelector('#appearance-grain').value=11;document.querySelector('#appearance-grain').dispatchEvent(new Event('input'));document.querySelector('#preset-save').click();const updated=select.value===id&&JSON.parse(localStorage.getItem('appearance-custom')).length===count;select.value='daylight';select.dispatchEvent(new Event('change'));select.value=id;select.dispatchEvent(new Event('change'));const restored=document.body.dataset.background==='artwork'&&document.body.dataset.theme==='dark';document.querySelector('#preset-delete').click();document.querySelector('#appearance-dock').value='always';document.querySelector('#appearance-dock').dispatchEvent(new Event('input'));for(const [key,value] of Object.entries({background:'artwork',opacity:35,grain:45})){const el=document.querySelector('#appearance-'+key);el.value=value;el.dispatchEvent(new Event('input'));}return {opaque,ordinary,updated,restored};})()`);
+ if(!presetRoundtrip.opaque||!presetRoundtrip.ordinary||!presetRoundtrip.updated||!presetRoundtrip.restored)throw Error('Preset roundtrip failed: '+JSON.stringify(presetRoundtrip));
  const appearance=await win.webContents.executeJavaScript(`({open:document.querySelector('#appearance-popover').matches(':popover-open'),background:document.body.dataset.background,opacity:document.body.style.getPropertyValue('--window-opacity'),grain:document.body.style.getPropertyValue('--grain')})`);
  if(!appearance.open||appearance.background!=='artwork'||Number(appearance.opacity)!==.65||Math.abs(Number(appearance.grain)-.072)>.000001)throw Error('Appearance controls failed: '+JSON.stringify(appearance));
  await shot(win,'appearance');
@@ -120,9 +129,10 @@ app.whenReady().then(async()=>{
  if(!spinning.round||!spinning.label||!spinning.rate)throw new Error('Vinyl failed '+JSON.stringify(spinning));
  const paperHit=await win.webContents.executeJavaScript(`(()=>{const el=document.querySelector('#paper-toggle'),r=el.getBoundingClientRect();return [r.left+3,r.right-3].every(x=>document.elementFromPoint(x,r.top+r.height/2)?.closest('#paper-toggle'));})()`);if(!paperHit)throw new Error('Paper-label control is clipped');
  state.queue.clock.playing=false;
- await win.webContents.executeJavaScript(`window.listening.render(${JSON.stringify(state.queue)})`);await new Promise(resolve=>setTimeout(resolve,450));
+ await win.webContents.executeJavaScript(`window.listening.render(${JSON.stringify(state.queue)});new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);await new Promise(resolve=>setTimeout(resolve,450));
  state.queue.clock.playing=true;
- const morph=await win.webContents.executeJavaScript(`window.listening.render(${JSON.stringify(state.queue)});new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(document.querySelector('#dock-play').getAnimations({subtree:true}).some(a=>a.transitionProperty==='d')))))`);
+ const morph=await win.webContents.executeJavaScript(`for(const path of document.querySelectorAll('.play-morph path'))path.style.transitionDuration='1.5s';window.listening.render(${JSON.stringify(state.queue)});new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(document.querySelector('#dock-play').getAnimations({subtree:true}).some(a=>a.transitionProperty==='d')))))`);
+ await win.webContents.executeJavaScript(`for(const path of document.querySelectorAll('.play-morph path'))path.style.transitionDuration=''`);
  if(!morph)throw new Error('Play/pause SVG does not morph');
  const pauseStyle=await win.webContents.executeJavaScript(`(()=>{const light=document.querySelector('#ambient-light');document.body.classList.add('playback-paused');const rule=[...document.styleSheets].flatMap(s=>[...s.cssRules]).find(r=>r.selectorText==='body.playback-paused .ambient-light');return {paused:Number(rule.style.opacity),transition:getComputedStyle(light).transitionDuration};})()`);
  if(pauseStyle.paused!==.35||pauseStyle.transition!=='1.4s')throw new Error('Pause must dim the shared light smoothly');
@@ -163,7 +173,15 @@ app.whenReady().then(async()=>{
  await new Promise(resolve=>setTimeout(resolve,700));
  await win.webContents.executeJavaScript(`(()=>{const lines=document.querySelectorAll('.lyric-line');window.dispatchEvent(new CustomEvent('lyric-change',{detail:{previous:lines[3],current:lines[4]}}));})()`);
  await new Promise(resolve=>setTimeout(resolve,120));await shot(win,'lyrics-particles');
+
+ await win.webContents.executeJavaScript(`window.playerEffects.palette([[185,92,65],[68,117,145],[190,168,135]]);document.querySelector('.floating-artwork').style.backgroundImage='url('+${JSON.stringify(publicArt)}+')';window.listening.panels({lyrics:'hidden',queue:'side'},false);document.querySelector('#vinyl-mode').checked=false;document.querySelector('#vinyl-mode').dispatchEvent(new Event('change'))`);
+ for(const id of ['glass','cover','daylight','quiet']){
+  await win.webContents.executeJavaScript(`(()=>{const select=document.querySelector('#appearance-preset');select.value=${JSON.stringify(id)};select.dispatchEvent(new Event('change'));document.querySelector('#appearance-dock').value='always';document.querySelector('#appearance-dock').dispatchEvent(new Event('input'));})()`);
+  await new Promise(resolve=>setTimeout(resolve,650));await shot(win,'preset-'+id);
+  const chrome=await win.webContents.executeJavaScript(`({glass:document.body.dataset.translucent,blur:getComputedStyle(document.querySelector('.topbar')).backdropFilter,color:getComputedStyle(document.querySelector('.topbar')).color,controls:[...document.querySelectorAll('[data-window]')].map(e=>e.getBoundingClientRect().height)})`);
+  if(chrome.controls.some(h=>h!==34)||id==='quiet'&&(chrome.glass!=='false'||chrome.blur!=='none'))throw Error('Chrome preset failed: '+JSON.stringify(chrome));
+ }
  if(errors.length)throw new Error(errors.join('\n'));
- console.log('UI_REVIEW_OK',JSON.stringify({screenshots:31,resizeCases:cases,toolbar:header,lyrics:lyricState,motion,bootMotion}));
+ console.log('UI_REVIEW_OK',JSON.stringify({screenshots:35,resizeCases:cases,toolbar:header,lyrics:lyricState,motion,bootMotion}));
  app.exit(0);
 }).catch(error=>{console.error('UI_REVIEW_FAILED',error.stack);app.exit(1);});

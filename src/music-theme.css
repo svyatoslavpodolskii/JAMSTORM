@@ -29,3 +29,36 @@ ytmusic-search-box,ytmusic-search-box[opened],ytmusic-search-box[has-focus],ytmu
 ytmusic-search-box #search-container,ytmusic-search-box[opened] #search-container,ytmusic-search-box[has-focus] #search-container,ytmusic-search-box #input-container{background:#ffffff12!important;border-radius:18px!important;box-shadow:inset 0 1px #ffffff1c!important}
 ytmusic-search-box input{background:transparent!important}
 ytmusic-search-box #suggestion-list,ytmusic-search-box #suggestions{background:#242a32eb!important;backdrop-filter:blur(36px)!important;border-radius:0 0 18px 18px}
+
+/* The remote surface follows the desktop appearance instead of a second theme. */
+:root{--jam-base:17 21 27;--jam-ink:#f2f4f7;--jam-muted:#aab2be;--jam-control:255 255 255;--jam-transparency:.55;--ytmusic-color-white1:var(--jam-ink);--ytmusic-color-white2:var(--jam-muted);--ytmusic-color-white3:var(--jam-muted);--yt-spec-text-primary:var(--jam-ink);--yt-spec-text-secondary:var(--jam-muted)}
+:root[data-jam-theme=light]{--jam-base:237 240 244;--jam-ink:#202731;--jam-muted:#57616e;--jam-control:24 33 44;--ytmusic-color-white1:#202731;--ytmusic-color-white2:#57616e;--ytmusic-color-white3:#68727e;--yt-spec-text-primary:#202731;--yt-spec-text-secondary:#57616e}
+html,body,ytmusic-app{color:var(--jam-ink)!important}
+ytmusic-app{--ytmusic-color-white1:var(--jam-ink);--ytmusic-color-white2:var(--jam-muted);--ytmusic-color-white3:var(--jam-muted);--yt-spec-text-primary:var(--jam-ink);--yt-spec-text-secondary:var(--jam-muted)}
+/* Lift the actual header above the cards. Its previous internal backdrop was
+   behind some card stacking contexts, so sharp images leaked through it. */
+ytmusic-nav-bar{z-index:1000!important;isolation:isolate;background:transparent!important;backdrop-filter:none!important;border:0!important;box-shadow:none!important;left:0!important;right:0!important;width:auto!important;color:var(--jam-ink)!important}
+ytmusic-nav-bar:before{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;background:rgb(var(--jam-base) / calc(.42 - var(--jam-transparency)*.38));backdrop-filter:blur(32px) saturate(115%);border-bottom:1px solid rgb(var(--jam-control) / .055)}
+#nav-bar-background{display:none!important}
+ytmusic-search-box #search-container,ytmusic-search-box[opened] #search-container,ytmusic-search-box[has-focus] #search-container,ytmusic-search-box #input-container{background:rgb(var(--jam-control) / .065)!important;backdrop-filter:none!important;border:1px solid rgb(var(--jam-control) / .09)!important;border-radius:13px!important;box-shadow:none!important}
+ytmusic-search-box input{color:var(--jam-ink)!important}
+ytmusic-search-box #suggestion-list,ytmusic-search-box #suggestions{background:rgb(var(--jam-base) / .96)!important;color:var(--jam-ink)!important}
+ytmusic-nav-bar tp-yt-iron-icon,ytmusic-guide-renderer tp-yt-iron-icon{color:var(--jam-ink)!important}
+ytmusic-player-bar{background:rgb(var(--jam-base) / .5)!important;color:var(--jam-ink)!important}
+:root[data-jam-glass=off] ytmusic-nav-bar:before{background:rgb(var(--jam-base));backdrop-filter:none;border-bottom-color:rgb(var(--jam-control) / .07)}
+:root[data-jam-glass=off] ytmusic-player-bar{background:rgb(var(--jam-base))!important;backdrop-filter:none!important}
+:root[data-jam-theme=light] ytmusic-nav-bar .logo,:root[data-jam-theme=light] ytmusic-nav-bar .logo-container{filter:brightness(.25)}
+:root[data-jam-theme=light]{color-scheme:light!important}
+html{scrollbar-width:thin;scrollbar-color:rgb(var(--jam-control) / .2) transparent}
+:root[data-jam-theme=light] ytmusic-app *{--ytmusic-color-white1:#202731!important;--ytmusic-color-white2:#57616e!important;--ytmusic-color-white3:#68727e!important;--yt-spec-text-primary:#202731!important;--yt-spec-text-secondary:#57616e!important}
+:root[data-jam-theme=light] ytmusic-app :is(yt-formatted-string,h1,h2,h3,a,.title,.subtitle,.text,.tab-renderer,ytmusic-chip-cloud-chip-renderer){color:var(--jam-ink)!important}
+:root[data-jam-theme=light] ytmusic-app :is(.subtitle,.secondary-flex-columns,.description,.byline,ytmusic-guide-signin-promo-renderer){color:var(--jam-muted)!important}
+:root[data-jam-theme=light] ytmusic-app :is(yt-icon,tp-yt-iron-icon,yt-icon-button){color:var(--jam-ink)!important;--iron-icon-fill-color:var(--jam-ink)}
+:root[data-jam-theme=light] ytmusic-search-box input::placeholder{color:#57616e!important}
+ytmusic-chip-cloud-renderer,ytmusic-chip-cloud-renderer *{scrollbar-width:none!important}
+ytmusic-carousel-shelf-renderer,ytmusic-carousel-shelf-renderer *{scrollbar-width:none!important}
+ytmusic-chip-cloud-renderer ::-webkit-scrollbar{display:none!important}
+ytmusic-app ::-webkit-scrollbar{width:8px;height:5px}
+ytmusic-app ::-webkit-scrollbar-thumb{background:rgb(var(--jam-control) / .2);border-radius:8px}
+ytmusic-app ::-webkit-scrollbar-track{background:transparent}
+:root[data-jam-theme=light] ytmusic-guide-renderer :is(button,button span,.yt-core-attributed-string){color:var(--jam-ink)!important}
