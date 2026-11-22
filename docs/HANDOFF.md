@@ -1,3 +1,8 @@
+## 0.7.9 — переключение и прогресс
+
+player.beginNavigation/finishNavigation закрывает окно гонки при смене Music/TV: сбрасывает nativeState/lastMedia и поколения, snapshot отбрасывает старый native read/sample. Команды блокируются во время перехода. app:mode сериализован. switching очищает сцену, stage.render(null) теперь действительно очищает её, а не оставляет старый трек. UI progress: один thumb вместо дублирующей canvas-точки, правильные границы waveform, нейтральная читаемая дорожка.
+
+Unit: 69 pass/1 Java skip. Hidden mode-switch-review с реальным предыдущим Music-треком прошёл (быстрый TV→Music, очередь и сцена пустые). TV --stress-back 20 раз прошёл. TV --playback НЕ прошёл: свежий hidden WebContentsView, даже с focus emulation и software rendering, HTTP200 от googlevideo и playability OK, но video.readyState=0, networkState=0, sourceBuffers не создаются. Не утверждать исправление playback-back по этому тесту. Не включать установленное приложение для проверки, пользователь смотрит фильмы. Эмуляция CDP не меняет настоящий фокус. Финальный UI run прошёл: 39 снимков/56 состояний (artifacts/ui-079-release-final.log). Стенд очистки исправлен: main fixture тоже обнуляет очередь, иначе poll возвращал старый тестовый трек. Ранее один run поймал flaky play/pause SVG equality; повтор завершился успешно.
 ## 0.7.8 — ambient и управление (2026-11-22)
 
 Проверки выполняются только скрыто, без звука и без фокуса. Пользователь смотрит фильмы на другом экране. Не запускать установленное приложение и не использовать CUA. Установщик запускать тихо БЕЗ /UPDATE, сохранить identity/policy/mode/addons. Android-патч не трогать.

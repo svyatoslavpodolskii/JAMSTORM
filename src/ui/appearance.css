@@ -182,6 +182,12 @@ body:has(#appearance-popover:popover-open) main{scrollbar-width:none}
 .video-view-active .artwork-content{visibility:hidden}
 #dock-video[aria-pressed=true]{color:var(--text);background:#ffffff14;border-radius:50%}
 body.video-view-active .immersion-canvas{display:none}
+#dock-seek{appearance:none;height:22px;background:transparent;cursor:pointer;--seek-ink:#e3eaf2}
+[data-theme=light] #dock-seek{--seek-ink:#344452}
+#dock-seek::-webkit-slider-runnable-track{height:3px;border-radius:5px;background:linear-gradient(90deg,var(--seek-ink) 0 var(--seek-progress,0%),rgb(176 190 204 / .24) var(--seek-progress,0%) 100%)}
+#dock-seek::-webkit-slider-thumb{appearance:none;width:10px;height:10px;margin-top:-3.5px;border-radius:50%;border:1px solid #ffffff55;background:var(--seek-ink);box-shadow:0 0 7px #e1edff40;transition:transform 180ms cubic-bezier(.2,1.2,.4,1),box-shadow 180ms ease}
+#dock-seek:is(:hover,:focus-visible)::-webkit-slider-thumb{transform:scale(1.35);box-shadow:0 0 10px #e1edff55}
+#dock-seek:disabled{opacity:.4;cursor:default}
 @media(max-width:1100px){.dock-actions .stage-icon{width:28px;min-width:28px;padding:0}}
 .video-view-active .ambient-light{opacity:0!important}
 .immersion-background{z-index:0}

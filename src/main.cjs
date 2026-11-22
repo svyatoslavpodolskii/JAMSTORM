@@ -23,7 +23,7 @@ if(selfContained&&!smoke){
   for(const [name,folder] of [['userData',data],['sessionData',path.join(data,'session')],['crashDumps',path.join(data,'crashes')],['logs',path.join(data,'logs')],['temp',path.join(data,'temp')]]){fs.mkdirSync(folder,{recursive:true});app.setPath(name,folder);}
 }
 if (smoke){app.setPath('userData',backgroundReview?path.join(app.isPackaged?app.getPath('temp'):path.join(__dirname,'../artifacts'),'background-review-'+process.pid):path.join(app.getPath('temp'),'jam-desktop-smoke'));for(const name of ['logs','crashDumps']){const folder=path.join(app.getPath('userData'),name);fs.mkdirSync(folder,{recursive:true});app.setPath(name,folder);}}
-if (smoke && !liveSmoke||process.argv.includes('--catalog-review')) app.disableHardwareAcceleration();
+if (smoke && !liveSmoke||process.argv.includes('--catalog-review')||backgroundReview&&process.argv.includes('--software-rendering')) app.disableHardwareAcceleration();
 require('electron').crashReporter.start({uploadToServer:false});
 let policy,appearanceView,videoSettings=require('./video-view.cjs').normalize(),videoBounds=null,videoSceneKey='',videoCssReady=false;
 let window, music, player, jam, room, tunnel, addons, appearanceOpen=false, panel={queue:'hidden',lyrics:'hidden'}, selectedTab = 'music', mode = 'music';
@@ -113,7 +113,7 @@ app.whenReady().then(async () => {
     callback({requestHeaders:headers});
   });
   const applyMode = async value => {
-    await ensureHooks();mode = value; player.mode = mode;
+    await ensureHooks();if(value!==mode&&!player.navigating){player.beginNavigation();videoBounds=null;videoSceneKey='';send('player:state',{phase:'switching'});}mode = value; player.mode = mode;
     musicSession.setUserAgent(mode === 'tv' ? tvUA : desktopUA);
     await music.webContents.debugger.sendCommand('Emulation.setUserAgentOverride', { userAgent: mode === 'tv' ? tvUA : desktopUA, ...(mode === 'tv' ? { userAgentMetadata: { brands:[{brand:'JamDesktop',version:'27'}], fullVersionList:[{brand:'JamDesktop',version:'27.lts.3'}], platform:'Starboard',platformVersion:'',architecture:'x86',model:'',mobile:false,bitness:'64',wow64:false } } : {}) });
     music.webContents.setUserAgent(mode === 'tv' ? tvUA : desktopUA);
@@ -123,7 +123,7 @@ app.whenReady().then(async () => {
   window.on('enter-full-screen',fullscreen);window.on('leave-full-screen',fullscreen);
   let tvBackPendingUntil=0,backTask=null,lastBack=0;
   const prepareNavigation=()=>new Promise(resolve=>{const token=require('node:crypto').randomUUID();let timer;const done=()=>{clearTimeout(timer);ipcMain.removeListener('player:navigation-ready',ready);resolve();};const ready=(event,value)=>{if(event.sender===music.webContents&&event.senderFrame===music.webContents.mainFrame&&value===token)done();};ipcMain.on('player:navigation-ready',ready);timer=setTimeout(done,250);music.webContents.send('player:prepare-navigation',token);});
-  const tvBack=()=>{if(backTask)return backTask;if(Date.now()-lastBack<350)return Promise.resolve();lastBack=Date.now();backTask=(async()=>{await prepareNavigation();if(mode!=='tv'||music.webContents.isDestroyed())return;music.webContents.focus();tvBackPendingUntil=Date.now()+1000;music.webContents.sendInputEvent({type:'keyDown',keyCode:'Escape'});music.webContents.sendInputEvent({type:'keyUp',keyCode:'Escape'});})().finally(()=>backTask=null);return backTask;};
+  const tvBack=()=>{if(backTask)return backTask;if(Date.now()-lastBack<350)return Promise.resolve();lastBack=Date.now();backTask=(async()=>{await prepareNavigation();if(mode!=='tv'||music.webContents.isDestroyed())return;if(!backgroundReview)music.webContents.focus();tvBackPendingUntil=Date.now()+1000;music.webContents.sendInputEvent({type:'keyDown',keyCode:'Escape'});music.webContents.sendInputEvent({type:'keyUp',keyCode:'Escape'});})().finally(()=>backTask=null);return backTask;};
   for(const wc of [window.webContents,music.webContents])wc.on('before-input-event',(e,input)=>{if(wc===music.webContents&&input.type==='keyDown'&&input.key==='Escape'&&tvBackPendingUntil>Date.now()){tvBackPendingUntil=0;return;}if(wc===music.webContents&&mode==='tv'&&input.type==='keyDown'&&input.key==='Escape'){e.preventDefault();if(!input.isAutoRepeat)tvBack().catch(()=>{});return;}if(input.type==='keyDown'&&(input.control||input.meta)&&(input.code==='KeyK'||['k','л'].includes(input.key.toLowerCase()))&&mode==='music'){e.preventDefault();selectedTab='music';layout();send('app:search-open',{});window.webContents.focus();}if(input.type==='keyDown'&&!input.isAutoRepeat&&(input.key==='F11'||input.key==='Escape'&&window.isFullScreen())){e.preventDefault();window.setFullScreen(input.key==='F11'?!window.isFullScreen():false);}});
   for (const event of ['will-navigate', 'will-redirect']) music.webContents.on(event, (e, url) => { if (!remoteAllowed(url)) e.preventDefault(); });
   music.webContents.setWindowOpenHandler(({url}) => {
@@ -135,6 +135,7 @@ app.whenReady().then(async () => {
   music.webContents.on('did-start-loading', () => {videoSceneKey='';send('player:state', { phase: 'loading' });});
   music.webContents.on('did-navigate',()=>{videoCssReady=false;videoSceneKey='';});
   music.webContents.on('did-finish-load', () => {
+    if(music.webContents.getURL().startsWith(mode==='tv'?'https://www.youtube.com/tv':'https://music.youtube.com/'))player.finishNavigation();
     if(/^https:\/\/(music.youtube.com|www.youtube.com\/tv)/.test(music.webContents.getURL()))music.webContents.insertCSS(fs.readFileSync(path.join(__dirname,'video-scene.css'),'utf8'),{cssOrigin:'user'}).then(()=>{videoCssReady=true;videoSceneKey='';layout();}).catch(()=>{});
     if(music.webContents.getURL().startsWith('https://music.youtube.com/'))accounts.refresh('music').catch(()=>{});else if(music.webContents.getURL().startsWith('https://www.youtube.com/tv'))accounts.refresh('tv').catch(()=>{});
     music.webContents.send('visual:enabled',visualsEnabled);music.webContents.send('filter:enabled',{block:policy.settings.blockExplicit,hide:policy.settings.hideExplicit});layout();send('player:state', { phase: 'ready' });
@@ -263,7 +264,8 @@ app.whenReady().then(async () => {
   handle('jam:copy', () => { if (!jam.state.invite) throw new Error('Сначала создай Jam'); clipboard.writeText(jam.state.invite); });
   handle('jam:qr', () => { if (!jam.state.invite) throw new Error('Сначала создай Jam'); return QRCode.toDataURL(jam.state.invite, { errorCorrectionLevel: 'M', margin: 3, width: 256 }); });
   handle('app:tab', async tab => { if (!['music','catalog','jam','invite','settings'].includes(tab)) throw new Error('Unknown tab');selectedTab=tab;layout();if(tab==='catalog')music.webContents.focus();else window.webContents.focus();return {mode}; });
-  handle('app:mode', async value => { if (!['tv', 'music'].includes(value)) throw new Error('Unknown player'); await prepareNavigation();await applyMode(value);if(!smoke)fs.writeFileSync(modeFile,JSON.stringify({mode:value})); selectedTab = 'music'; layout(); send('app:mode',mode);await music.webContents.loadURL(home());music.webContents.navigationHistory.clear(); });
+  let modeTask=Promise.resolve();
+  handle('app:mode', value => { if (!['tv', 'music'].includes(value)) throw new Error('Unknown player');modeTask=modeTask.catch(()=>{}).then(async()=>{await prepareNavigation();player.beginNavigation();videoBounds=null;send('player:state',{phase:'switching'});await applyMode(value);if(!smoke)fs.writeFileSync(modeFile,JSON.stringify({mode:value})); selectedTab='music';layout();send('app:mode',mode);await music.webContents.loadURL(home());music.webContents.navigationHistory.clear();});return modeTask; });
   handle('room:start', async () => { if (jam.state.role === 'guest') throw new Error('Для браузерной комнаты хостом должен быть этот ПК'); if (jam.state.role !== 'host') { await jam.host(controlledCommand); } return room.start(); });
   handle('room:state', roomView);
   handle('room:stop', () => { tunnel.stop(); room.stop(); return roomView(); });

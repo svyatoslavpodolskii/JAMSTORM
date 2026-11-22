@@ -1,7 +1,7 @@
 <p align="center"><img src="assets/icon.png" width="88" alt="JAMSTORM"></p>
 <h1 align="center">JAMSTORM</h1>
 <p align="center">Твоя музыка. Ваша очередь.</p>
-<p align="center"><a href="https://github.com/svyatoslavpodolskii/JAMSTORM/releases/download/v0.7.8/JAMSTORM-0.7.8-setup.exe">Скачать для Windows</a> · <a href="#слушайте-вместе">Слушать вместе</a> · <a href="docs/USER-GUIDE.md">Как пользоваться</a></p>
+<p align="center"><a href="https://github.com/svyatoslavpodolskii/JAMSTORM/releases/download/v0.7.9/JAMSTORM-0.7.9-setup.exe">Скачать для Windows</a> · <a href="#слушайте-вместе">Слушать вместе</a> · <a href="docs/USER-GUIDE.md">Как пользоваться</a></p>
 
 ![Экран прослушивания JAMSTORM](.github/media/player.png)
 

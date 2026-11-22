@@ -119,6 +119,7 @@ $('add-form').addEventListener('submit', event => {
 $('retry-player').addEventListener('click', () => action(async () => { $('player-error').hidden = true; await call(window.jam.retry()); await tab('music'); }));
 window.jam.onState(render);
 window.jam.onPlayer(value => {
+  if(value.phase==='switching'&&state.role!=='guest')render({...state,queue:null});
   if (value.phase === 'fallback') { $('player-mode').value='music';window.listening.mode('music');message(value.message); }
   if (value.phase === 'error') { $('player-error-text').textContent = value.message; $('player-error').hidden = false; tab('jam').catch(() => {}); }
   if(value.phase==='blocked'||value.phase==='recovering'||value.phase==='recovered')message(value.message);

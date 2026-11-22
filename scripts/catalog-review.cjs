@@ -2,6 +2,14 @@
 module.exports=async({window,music,player,dir,path,fs})=>{
  const output=path.join(dir,'catalog-review');fs.mkdirSync(output,{recursive:true});
  await window.webContents.executeJavaScript(`tab('catalog')`);
+ if(process.argv.includes('--mode-switch-review')){
+  await player.select({id:'old-track',videoId:'5NV6Rdv1a3I'},true);await player.ready('5NV6Rdv1a3I');await player.transport(false);const old=await player.snapshot();if(!old.items.length)throw Error('Old-track precondition failed');
+  await window.webContents.executeJavaScript(`render({...state,queue:${JSON.stringify(old)}})`);
+  const switched=await window.webContents.executeJavaScript(`Promise.all([window.jam.mode('tv'),window.jam.mode('music')])`);if(switched.some(r=>!r.ok))throw Error('Mode switch failed');
+  const q=await player.snapshot(),scene=await window.webContents.executeJavaScript(`({hasTrack:document.body.classList.contains('has-track'),title:document.getElementById('hero-title').textContent})`);
+  if(player.mode!=='music'||player.navigating||q.items.length||q.nowPlaying||scene.hasTrack)throw Error('Old playback survived mode switch '+JSON.stringify({mode:player.mode,q,scene}));
+  console.log('MODE_SWITCH_OK',JSON.stringify({mode:player.mode,queueEmpty:true,sceneCleared:true,hidden:!window.isVisible(),muted:music.webContents.isAudioMuted()}));return;
+ }
  if(process.argv.includes('--native-menu-review')){
   await player.select({id:'menu-review',videoId:'5NV6Rdv1a3I'},true);await player.ready('5NV6Rdv1a3I');await new Promise(r=>setTimeout(r,3000));
   const opened=await music.webContents.executeJavaScript(require('../src/feedback.cjs').script('menu'));if(!opened.available)throw Error('Native track menu unavailable');await new Promise(r=>setTimeout(r,1500));

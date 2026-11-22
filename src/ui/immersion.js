@@ -43,8 +43,7 @@
   if(visible&&mode!=='none'){
    const seek=$('dock-seek'),r=seek.getBoundingClientRect(),progress=Number(seek.value)/1000;ctx.strokeStyle=`rgba(${ink},.55)`;ctx.fillStyle=`rgba(${ink},.5)`;ctx.lineWidth=1;
    if(mode==='trail'&&r.width&&!body.classList.contains('dock-collapsed')&&getComputedStyle(dock).opacity!=='0'){
-    const y=r.top+r.height/2;for(let i=0;i<history.length;i++){if(history[i]===null||i/400>progress)continue;const x=r.left+i/400*r.width,bar=2+history[i]*23;ctx.fillStyle=`rgba(${ink},${.14+history[i]*.55})`;ctx.fillRect(x,y-bar/2,Math.max(1,r.width/400*.62),bar);}
-    if(active){const x=r.left+progress*r.width;ctx.fillStyle=`rgba(${ink},.8)`;ctx.beginPath();ctx.arc(x,y,2.5+level,0,Math.PI*2);ctx.fill();}
+    const y=r.top+r.height/2;for(let i=0;i<history.length;i++){if(history[i]===null||i/400>progress)continue;const x=r.left+5+i/400*(r.width-10),bar=2+history[i]*23;ctx.fillStyle=`rgba(${ink},${.14+history[i]*.55})`;ctx.fillRect(x,y-bar/2,Math.max(1,(r.width-10)/400*.62),bar);}
    }else if(active&&mode!=='trail'&&document.querySelector('#listening-stage').dataset.focus==='artwork'){
     const art=$('cover-frame').getBoundingClientRect(),stage=$('listening-stage').getBoundingClientRect(),center=art.width?art.left+art.width/2:w/2;
     if((mode==='corona'||mode==='lava')&&art.width){

@@ -5,7 +5,10 @@ const videoId = /^[a-zA-Z0-9_-]{11}$/;
 // silently advertised as a fully imported editable queue.
 class JamPlayer {
   constructor(browser) { this.browser = browser; this.mode = 'tv'; this.reset(); this.tail = Promise.resolve(); }
-  reset() { this.items = []; this.current = null; this.serial = 0; this.revision = 0; this.generation = randomUUID(); this.playbackGeneration = randomUUID(); this.sequence = 0; this.observed = null; this.lastMedia = null; }
+  reset() { this.items = []; this.current = null; this.serial = 0; this.revision = 0; this.generation = randomUUID(); this.playbackGeneration = randomUUID(); this.sequence = 0; this.observed = null; this.lastMedia = null; this.nativeState = null; }
+  beginNavigation(){this.reset();this.navigating=true;}
+  finishNavigation(){this.navigating=false;}
+  emptySnapshot(){return {ok:true,native:false,items:[],nowPlaying:null,autoplay:[],revision:this.generation+':0',clock:{generation:this.playbackGeneration,sequence:++this.sequence,sampledAt:Math.round(performance.now()),age:0,videoId:'',playbackControl:false,playing:false,position:0,duration:0}};}
   async sample() {
     if (this.browser.isDestroyed() || !['https://music.youtube.com', 'https://www.youtube.com'].includes(new URL(this.browser.getURL() || 'about:blank').origin)) return null;
     try {
@@ -24,8 +27,10 @@ class JamPlayer {
     } catch { return null; }
   }
   async snapshot() {
-    if(this.native){let value=await this.native.read();if(this.policy?.settings.blockExplicit&&value.available&&value.items.some(i=>i.explicit)){const selected=value.items.findIndex(i=>i.current);if(value.items[selected]?.explicit){const next=value.items.findIndex((i,n)=>n>selected&&!i.explicit);if(next>=0)await this.native.command('PLAY',{index:next});else await this.browser.executeJavaScript(`document.querySelector('video')?.pause()`);value=await this.native.read();}for(let i=value.items.length-1;i>=0;i--)if(value.items[i].explicit&&!value.items[i].current)await this.native.command('REMOVE',{index:i});value=await this.native.read();value.items=value.items.filter(i=>!i.explicit);}this.nativeState=value; if(value.available)this.reconcile(value.items);else{this.items=[];this.current=null;}}
-    const media = await this.sample();
+    if(this.navigating)return this.emptySnapshot();const generation=this.generation;
+    if(this.native){let value=await this.native.read();if(generation!==this.generation||this.navigating)return this.emptySnapshot();if(this.policy?.settings.blockExplicit&&value.available&&value.items.some(i=>i.explicit)){const selected=value.items.findIndex(i=>i.current);if(value.items[selected]?.explicit){const next=value.items.findIndex((i,n)=>n>selected&&!i.explicit);if(next>=0)await this.native.command('PLAY',{index:next});else await this.browser.executeJavaScript(`document.querySelector('video')?.pause()`);value=await this.native.read();}for(let i=value.items.length-1;i>=0;i--)if(value.items[i].explicit&&!value.items[i].current)await this.native.command('REMOVE',{index:i});value=await this.native.read();value.items=value.items.filter(i=>!i.explicit);}if(generation!==this.generation||this.navigating)return this.emptySnapshot();this.nativeState=value; if(value.available)this.reconcile(value.items);else{this.items=[];this.current=null;}}
+    if(generation!==this.generation||this.navigating)return this.emptySnapshot();const media = await this.sample();
+    if(generation!==this.generation||this.navigating)return this.emptySnapshot();
     this.lastMedia=media;
     if (media && videoId.test(media.videoId || '') && !this.native) {
       const current = this.items.find(i => i.id === this.current);
@@ -122,6 +127,7 @@ class JamPlayer {
   async execute(command) {
     const before = await this.snapshot();
     if (command.op === 'SNAPSHOT' || command.op === 'SYNC') return before;
+    if(this.navigating)return {ok:false,error:'Player is switching; please wait'};
     if(this.mode==='tv'&&command.op==='PLAY'&&before.nowPlaying&&command.item===before.nowPlaying.id&&command.videoId===before.nowPlaying.videoId){
       if(typeof command.playing!=='boolean')return {ok:false,error:'Invalid playing flag'};
       await this.transport(command.playing,command.videoId);

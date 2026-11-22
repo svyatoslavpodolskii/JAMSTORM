@@ -8,6 +8,18 @@ test('media availability follows the current sample and clears on reset',async()
  p.sample=async()=>null;await p.snapshot();assert.equal(p.lastMedia,null);
  p.lastMedia={videoId:'old',hasVideo:true};p.reset();assert.equal(p.lastMedia,null);
 });
+test('switching players discards a pending old media sample',async()=>{
+ const p=make();let finish;p.sample=()=>new Promise(resolve=>finish=resolve);
+ const pending=p.snapshot();p.beginNavigation();finish({videoId:'abcdefghijk',hasVideo:true,playing:true});
+ assert.equal((await pending).items.length,0);assert.equal(p.lastMedia,null);
+ assert.equal((await p.call({op:'PLAY',videoId:'abcdefghijk',playing:true})).ok,false);
+ p.finishNavigation();p.sample=async()=>({videoId:'12345678901',title:'New',playing:false});const q=await p.snapshot();assert.deepEqual(q.items.map(i=>i.videoId),['12345678901']);
+});
+test('switching during a native queue read cannot restore old queue entries',async()=>{
+ const p=make();let finish;p.native={read:()=>new Promise(resolve=>finish=resolve)};
+ const pending=p.snapshot();p.beginNavigation();finish({available:true,items:[{videoId:'abcdefghijk',current:true}]});
+ assert.equal((await pending).items.length,0);assert.deepEqual(p.items,[]);assert.equal(p.nativeState,null);
+});
 test('transport updates the native player and retries a transient media source replacement',async()=>{
  let starts=0,attempts=0,pauses=0;
  const native={getVideoData:()=>({video_id:'abcdefghijk'}),classList:{contains:()=>false},playVideo(){starts++;},pauseVideo(){pauses++;}};

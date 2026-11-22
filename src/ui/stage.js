@@ -83,7 +83,7 @@
     row.ondrop=event=>{event.preventDefault();row.classList.remove('drop-target');try{const data=JSON.parse(event.dataTransfer.getData('application/x-jamstorm-item'));if(data.id!==item.id&&items.some(i=>i.id===data.id))command('MOVE',{item:data.id,target:item.id,revision:data.revision});}catch{}};
   }
   function render(q){
-    if(!q)return;queue=q;clock=q.clock||{};received=performance.now();const now=current(),items=q.items||[];updatePage();
+    q=q||{items:[],clock:{}};queue=q;clock=q.clock||{};received=performance.now();const now=current(),items=q.items||[];updatePage();
     el('hero-title').textContent=window.artwork.title(now)||'С чего начнём?';el('hero-title').title=now?.title||'';el('hero-artist').textContent=now?.artist||'Найди любимую песню или открой каталог.';
     el('hero-eyebrow').textContent=now?'Сейчас играет':'Твоя музыка. Ваша очередь.';el('hero-start').hidden=!!now;
     el('dock-title').textContent=window.artwork.title(now)||'Пока тихо';el('dock-artist').textContent=now?.artist||'Выбери первую песню';
@@ -98,7 +98,7 @@
     const now=performance.now(),target=Math.min(clock.duration||Infinity,(clock.position||0)+(clock.playing?Math.min(1800,now-received):0)),dt=Math.min(100,now-(lastTick||now));lastTick=now;
     if(displayPosition===null||!clock.playing||Math.abs(target-displayPosition)>1600)displayPosition=target;else displayPosition+=(target-displayPosition)*(1-Math.exp(-dt/90));
     const position=displayPosition;
-    window.playerEffects.tick(position,clock.duration,clock.playing);el('dock-position').textContent=time(position);if(performance.now()>seekUntil)el('dock-seek').value=clock.duration?position/clock.duration*1000:0;
+    window.playerEffects.tick(position,clock.duration,clock.playing);el('dock-position').textContent=time(position);if(performance.now()>seekUntil)el('dock-seek').value=clock.duration?position/clock.duration*1000:0;el('dock-seek').style.setProperty('--seek-progress',Number(el('dock-seek').value)/10+'%');
     const live=el('stage-tracks').querySelector('.is-current .track-live');if(live)live.textContent=clock.playing?'Играет':'Пауза';
     if(!lines.length||panels.lyrics==='hidden')return;let index=-1;for(let i=0;i<lines.length;i++){if(lines[i].time>position)break;index=i;}if(index===highlight)return;const previous=highlight;highlight=index;
     const container=el('stage-lines');[...container.children].forEach((line,i)=>{line.classList.toggle('is-active',i===index);line.classList.toggle('is-past',i<index);});
@@ -120,7 +120,7 @@
   el('queue-all').onclick=()=>tab('jam').catch(fail);el('dock-invite').onclick=()=>el('invite-tab').click();
   el('dock-play').onclick=()=>{const now=current();if(now)command('PLAY',{item:now.id,videoId:now.videoId,playing:!clock.playing});};
   for(const [id,op] of [['dock-previous','SKIP_PREVIOUS'],['dock-next','SKIP_NEXT']])el(id).onclick=()=>command(op,{});
-  el('dock-seek').step='0.001';el('dock-seek').oninput=()=>{seekUntil=performance.now()+800;};el('dock-seek').onchange=()=>{const position=Math.round(Number(el('dock-seek').value)/1000*clock.duration);clock={...clock,position};received=performance.now();displayPosition=position;seekUntil=0;return command('SEEK',{videoId:current()?.videoId,position});};
+  el('dock-seek').step='0.001';el('dock-seek').oninput=()=>{seekUntil=performance.now()+800;el('dock-seek').style.setProperty('--seek-progress',Number(el('dock-seek').value)/10+'%');};el('dock-seek').onchange=()=>{const position=Math.round(Number(el('dock-seek').value)/1000*clock.duration);clock={...clock,position};received=performance.now();displayPosition=position;seekUntil=0;return command('SEEK',{videoId:current()?.videoId,position});};
   el('stage-lines').onwheel=()=>{manualUntil=performance.now()+4500;};el('stage-lines').addEventListener('touchmove',()=>{manualUntil=performance.now()+4500;},{passive:true});
   document.addEventListener('keydown',event=>{if(event.code==='Space'&&page==='music'&&!el('search-dialog').open&&!['INPUT','TEXTAREA','SELECT','BUTTON'].includes(document.activeElement.tagName)){event.preventDefault();el('dock-play').click();}if((event.ctrlKey||event.metaKey)&&(event.code==='KeyK'||['k','л'].includes(event.key.toLowerCase()))){event.preventDefault();openSearch();}});
   for(const key of ['lyrics','queue']){

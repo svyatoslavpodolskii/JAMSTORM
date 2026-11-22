@@ -1,5 +1,7 @@
 'use strict';
 module.exports=async({window,music,player,dir,path,fs})=>{
+ if(process.argv.includes('--background-review'))await music.webContents.debugger.sendCommand('Emulation.setFocusEmulationEnabled',{enabled:true});
+ if(process.argv.includes('--playback')){await music.webContents.debugger.sendCommand('Network.enable');music.webContents.debugger.on('message',(_e,method,p)=>{if(method==='Network.responseReceived'&&new URL(p.response.url).hostname.endsWith('googlevideo.com'))console.log('TV_STREAM_HTTP',p.response.status);});await music.webContents.executeJavaScript(`(()=>{window.__reviewBuffers=[];const original=MediaSource.prototype.addSourceBuffer;MediaSource.prototype.addSourceBuffer=function(type){const entry={type,updates:0,error:''};window.__reviewBuffers.push(entry);try{const buffer=original.call(this,type);buffer.addEventListener('updateend',()=>entry.updates++);buffer.addEventListener('error',()=>entry.error='buffer-error');return buffer;}catch(error){entry.error=error.name;throw error;}}})()`);}
  await window.webContents.executeJavaScript(`tab('catalog')`);
  window.setSize(1320,880);await new Promise(r=>setTimeout(r,2500));
  if(process.argv.includes('--account-inspect')){const account=require('../src/accounts.cjs');console.log('TV_LOGIN_OPENED',await music.webContents.executeJavaScript(account.tvLoginScript));await new Promise(r=>setTimeout(r,1800));console.log('TV_SIGNIN_PROBE',await music.webContents.executeJavaScript(`JSON.stringify({path:location.hash.split('?')[0],tags:[...document.querySelectorAll('*')].filter(e=>/sign-in|signin|account-selector|pairing|oauth/i.test(e.tagName)).map(e=>e.tagName).slice(0,15),activateLink:document.body.innerText.includes('youtube.com/activate')||document.body.innerText.includes('yt.be/activate')})`));return;}
@@ -8,10 +10,12 @@ module.exports=async({window,music,player,dir,path,fs})=>{
  await music.webContents.executeJavaScript(`(()=>{const instance=Object.values(window._yttv||{}).find(v=>v?.instance?.resolveCommand)?.instance;instance?.resolveCommand({browseEndpoint:{browseId:'FEtopics_music'}});})()`);await new Promise(r=>setTimeout(r,1500));
  console.log('TV_MUSIC_SECTION',await music.webContents.executeJavaScript(`JSON.stringify({url:location.href,text:document.body.innerText.slice(0,1000)})`));
  if(process.argv.includes('--stress-back')){
+  if(process.argv.includes('--playback')){try{await player.select({id:'back-review',videoId:'5NV6Rdv1a3I'},true);await player.ready('5NV6Rdv1a3I');console.log('TV_BACK_MEDIA',JSON.stringify(await player.sample()));}catch(error){console.log('TV_BUFFER_STATE',await music.webContents.executeJavaScript(`({buffers:window.__reviewBuffers,ready:document.querySelector('video')?.readyState,paused:document.querySelector('video')?.paused,network:document.querySelector('video')?.networkState,status:document.querySelector('.html5-video-player')?.getPlayerResponse?.()?.playabilityStatus})`));throw error;}}
   for(let i=0;i<20;i++){const result=await window.webContents.executeJavaScript(`window.jam.navigate('back')`);if(!result.ok)throw Error('Back failed at '+i);await new Promise(resolve=>setTimeout(resolve,400));if(window.isDestroyed()||music.webContents.isDestroyed())throw Error('Back closed the application');}
   await music.webContents.executeJavaScript(`window.close()`);await new Promise(resolve=>setTimeout(resolve,1500));
   if(window.isDestroyed()||music.webContents.isDestroyed())throw Error('TV Exit closed the host');
   console.log('TV_BACK_STRESS_OK',20,'EXIT_INTERCEPTED');
+  if(process.argv.includes('--background-review')&&(window.isVisible()||window.isFocused()||!music.webContents.isAudioMuted()))throw Error('TV review became visible or audible');
  }
  if(process.argv.includes('--hold-review'))await new Promise(r=>setTimeout(r,60000));
 };
