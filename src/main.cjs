@@ -280,7 +280,8 @@ app.whenReady().then(async () => {
     }catch{}finally{ambientBusy=false;}
   },2500);
   const accountTimer=setInterval(()=>{if(mode==='tv')accounts.refresh('tv').catch(()=>{});},10000);
-  window.on('closed',()=>{if(appearanceView&&!appearanceView.webContents.isDestroyed())appearanceView.webContents.close({waitForBeforeUnload:false});clearInterval(accountTimer);clearInterval(ambientTimer);musicMetadata.close();recovery.close();});
+  let appearanceCapturing=false;const appearanceTimer=setInterval(async()=>{if(appearanceCapturing||!appearanceOpen||selectedTab!=='catalog'||!appearanceView||appearanceView.webContents.isDestroyed()||music.webContents.isDestroyed())return;appearanceCapturing=true;try{const rect=appearanceView.getBounds(),base=music.getBounds();const image=await music.webContents.capturePage({x:Math.max(0,rect.x-base.x),y:Math.max(0,rect.y-base.y),width:rect.width,height:Math.min(rect.height,base.height-8)});if(appearanceView&&!appearanceView.webContents.isDestroyed())appearanceView.webContents.send('appearance:backdrop',image.toDataURL());}catch{}finally{appearanceCapturing=false;}},180);
+  window.on('closed',()=>{if(appearanceView&&!appearanceView.webContents.isDestroyed())appearanceView.webContents.close({waitForBeforeUnload:false});clearInterval(appearanceTimer);clearInterval(accountTimer);clearInterval(ambientTimer);musicMetadata.close();recovery.close();});
   window.on('resize', layout); window.on('closed', () => { tunnel.stop(); room.stop(); jam.disconnect(); if(!music.webContents.isDestroyed())music.webContents.close({waitForBeforeUnload:false}); window = null; });
   await window.loadFile(path.join(__dirname, 'ui/index.html')); layout();send('app:mode',mode);
   if (smoke) {
