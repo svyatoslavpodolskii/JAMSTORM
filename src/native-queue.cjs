@@ -2,7 +2,7 @@
 // Only the public shape of YouTube's own renderer commands crosses this boundary.
 // No Node bridge, authentication tokens or arbitrary script input reach the page.
 class NativeQueue {
-  constructor(browser, mode = ()=>'music') { this.browser=browser;this.mode=mode; }
+  constructor(browser, mode = ()=>'music',metadata=null) { this.browser=browser;this.mode=mode;this.tvMetadata=metadata; }
   async read() {
     if (!/^https:\/\/(music|www)\.youtube\.com\//.test(this.browser.getURL())) return {available:false,items:[]};
     return this.browser.executeJavaScript(`(() => {
@@ -19,6 +19,7 @@ class NativeQueue {
     })()`);
   }
   async metadata(id){
+    if(this.mode()==='tv'&&this.tvMetadata)return this.tvMetadata.get(id);
     if(!/^[\w-]{11}$/.test(id||'')||!this.browser.getURL().startsWith('https://music.youtube.com/'))return {known:false};
     return this.browser.executeJavaScript(`(async()=>{const app=document.querySelector('ytmusic-app');if(!app?.networkManager?.fetch)return {known:false};const response=await app.networkManager.fetch('/music/get_queue',{videoIds:[${JSON.stringify(id)}]});const entry=response?.queueDatas?.[0]?.content;const row=entry?.playlistPanelVideoRenderer||entry?.playlistPanelVideoWrapperRenderer?.primaryRenderer?.playlistPanelVideoRenderer;if(!row||row.videoId!==${JSON.stringify(id)})return {known:false};return {known:true,explicit:/MUSIC_EXPLICIT_BADGE|EXPLICIT|EXPLICIT_BADGE/.test(JSON.stringify(row.badges||[]))};})()`);
   }

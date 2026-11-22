@@ -1,4 +1,14 @@
-# Продолжение · 0.7.2
+# Продолжение · 0.7.3
+
+BrowserLogin теперь двухфазный. Во время авторизации Chrome запускается без CDP/headless/WebAuthn overrides, в data/login-browser-human. После закрытия окна пользователем отдельный headless reader открывает только about:blank, читает cookies через pipe, закрывается и передаёт Google/YouTube cookies в Electron; Music должен подтвердить LOGGED_IN. Устранён лишний вызов Promise в проверке LOGGED_IN. Живой reader-тест подтвердил сохранение fixture-cookie после закрытия и повторного открытия Chrome. Полный вход требует пользователя и не подтверждён автоматически.
+
+TV Explicit: music-metadata.cjs держит отдельный невидимый, беззвучный Music WebContentsView в той же сессии и получает реальные badges через /music/get_queue. TV-заголовки больше не подменяют UA запросов music.youtube.com. Preload приостанавливает play до проверки; unknown и E не запускаются. Main-world hooks перепроверяют повторно используемый элемент при playing/durationchange/timeupdate; реклама не сравнивается с ID музыкального трека. Реальный поиск Music нашёл 4 E-трека, все 4 подтверждены queue API. Чистый Get Lucky подтверждён как non-E.
+
+TV Back: debounce и cleanup/ack аудиоанализа до trusted Escape; отмена анализа, ожидающего AudioContext.resume; очистка при удалённом video/emptied/abort. TV window.close перехватывается и возвращает в Music TV вместо закрытия хоста. 20 Back + Exit прошли. RendererRecovery переоткрывает about:blank, восстанавливает preload/debugger/addons и домашнюю страницу; проверен forcefullyCrashRenderer, защита от циклического reload. Локальные runtime.log и Crashpad dumps хранятся в data/logs и data/crashes без отправки.
+
+Music select повторяет play при AbortError смены источника, другие ошибки сохраняются. TV гостевого тестового профиля всё ещё может вернуть This video format is not supported; не обходить DRM/защиты и не считать метаданные доказательством успешного воспроизведения. Проверки ниже 0.7.2 относятся к предыдущему релизу.
+
+## Предыдущая реализация 0.7.2
 
 Вход теперь через BrowserLogin (src/browser-login.cjs): установленный Chrome/Edge, отдельный профиль data/login-browser, CDP pipe без TCP-порта. Только Google/YouTube cookies передаются в общую Electron-сессию; UI не получает секретов. После переноса требуется LOGGED_IN=true на Music. Полный вход пользователя не подтверждён. TV может отдельно потребовать код устройства. Google sign-in из native навигации и popup перехватывается; обычный запуск больше не грузит застрявшую форму Google.
 

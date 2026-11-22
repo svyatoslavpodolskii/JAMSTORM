@@ -6,7 +6,7 @@
   if (location.pathname === '/tv' && typeof MediaSource !== 'undefined') {
     const supports = MediaSource.isTypeSupported.bind(MediaSource);
     const limits = { width:7680,height:4320,framerate:120,bitrate:200000000,channels:8 };
-    MediaSource.isTypeSupported = type => {
+    const adapted = type => {
       const [mime,...parameters] = String(type).split(';').map(s=>s.trim()), kept=[mime];
       for (const parameter of parameters) {
         const [raw,...rest] = parameter.split('='), key=raw.trim().toLowerCase(), value=rest.join('=').trim().replace(/^"|"$/g,'');
@@ -17,9 +17,20 @@
         else kept.push(parameter);
       }
       return supports(kept.join('; '));
-    };
+    };window.__jamstormMimeChecks=[];MediaSource.isTypeSupported=type=>{const result=adapted(type);if(window.__jamstormMimeChecks.length<200)window.__jamstormMimeChecks.push({type:String(type),result});return result;};
   }
   if (location.hostname === 'www.youtube.com' && location.pathname === '/tv') {
+    // A TV remote's Exit/Back must not close the desktop host window.
+    window.close=()=>window.dispatchEvent(new Event('jamstorm-tv-exit'));
+    // Catch gapless/autoplay track changes which reuse the media element and
+    // do not necessarily dispatch another play event.
+    const verifyCurrent=event=>{
+      if(document.documentElement.dataset.jamstormExplicit!=='block'||!(event.target instanceof HTMLMediaElement))return;
+      const p=document.querySelector('.html5-video-player,#movie_player');if(p?.classList.contains('ad-showing'))return;
+      const data=p?.getVideoData?.(),id=data?.video_id||data?.videoId;
+      if(/^[\w-]{11}$/.test(id||'')&&document.documentElement.dataset.jamApprovedVideo!==id){event.target.pause();window.dispatchEvent(new Event('jamstorm-track-check'));}
+    };
+    for(const name of ['playing','timeupdate','durationchange'])document.addEventListener(name,verifyCurrent,true);
     const listeners = [];
     const id = new URLSearchParams(location.hash.split('?')[1] || '').get('v');
     window.h5vcc = { runtime: { initialDeepLink: /^[\w-]{11}$/.test(id || '') ? 'https://www.youtube.com/watch?v=' + id : '', onDeepLink: { addListener: fn => { if (typeof fn === 'function') listeners.push(fn); } } }, system: { getVideoContainerSizeOverride: () => '1920x1080' } };

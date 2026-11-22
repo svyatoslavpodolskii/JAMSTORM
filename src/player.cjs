@@ -100,7 +100,7 @@ class JamPlayer {
       })`);
     }
     this.current = item.id; this.revision++; this.playbackGeneration = randomUUID();
-    await this.browser.executeJavaScript(`(async () => { window.__jamstormPaused=${!playing}; const v = document.querySelector('video'); if (!v) throw new Error('Плеер ещё не готов'); ${playing ? "await Promise.race([v.play(),new Promise((_,reject)=>setTimeout(()=>reject(new Error('Видео не загрузилось. Проверь сообщение в плеере.')),8000))])" : 'v.pause()'}; })()`, true);
+    await this.browser.executeJavaScript(`(async () => { window.__jamstormPaused=${!playing}; const v = document.querySelector('video'); if (!v) throw new Error('Плеер ещё не готов'); ${playing ? "const deadline=Date.now()+8000;for(;;){const active=document.querySelector('video');try{await Promise.race([active.play(),new Promise((_,reject)=>setTimeout(()=>reject(new Error('Видео не загрузилось')),Math.max(1,deadline-Date.now())))]);break;}catch(error){if(error.name!=='AbortError'||Date.now()>=deadline)throw new Error(error.name+': '+error.message);await new Promise(resolve=>setTimeout(resolve,150));}}" : 'v.pause()'}; })()`, true);
     } catch (error) { if (this.mode === 'tv' && this.fallback) { await this.fallback(item.videoId); return this.select(item,playing); } throw error; }
   }
   async execute(command) {

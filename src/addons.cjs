@@ -16,7 +16,7 @@ class Addons {
   }
   view() { return { ...this.settings }; }
   async configure() {
-    if (this.script) await this.browser.debugger.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: this.script });
+    if (this.script)try{await this.browser.debugger.sendCommand('Page.removeScriptToEvaluateOnNewDocument', { identifier: this.script });}catch{}
     const source = `window.__jamstormAdblock=${this.settings.adblock};`;
     this.script = (await this.browser.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', { source })).identifier;
     await this.browser.executeJavaScript(source);

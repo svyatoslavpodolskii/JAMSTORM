@@ -20,8 +20,9 @@ if(selfContained&&!smoke){
   const data=path.join(installDirectory,'data');fs.mkdirSync(data,{recursive:true});
   for(const [name,folder] of [['userData',data],['sessionData',path.join(data,'session')],['crashDumps',path.join(data,'crashes')],['logs',path.join(data,'logs')],['temp',path.join(data,'temp')]]){fs.mkdirSync(folder,{recursive:true});app.setPath(name,folder);}
 }
-if (smoke) app.setPath('userData', path.join(app.getPath('temp'), 'jam-desktop-smoke'));
+if (smoke){app.setPath('userData',path.join(app.getPath('temp'),'jam-desktop-smoke'));for(const name of ['logs','crashDumps']){const folder=path.join(app.getPath('userData'),name);fs.mkdirSync(folder,{recursive:true});app.setPath(name,folder);}}
 if (smoke && !liveSmoke||process.argv.includes('--catalog-review')) app.disableHardwareAcceleration();
+require('electron').crashReporter.start({uploadToServer:false});
 let policy;
 let window, music, player, jam, room, tunnel, addons, appearanceOpen=false, panel={queue:'hidden',lyrics:'hidden'}, selectedTab = 'music', mode = 'music';
 const nativeMaterialSupported=process.platform==='win32'&&Number(require('node:os').release().split('.')[2])>=22621;
@@ -91,20 +92,19 @@ app.whenReady().then(async () => {
   music = new WebContentsView({ webPreferences: { ...prefs, session: musicSession, preload: path.join(__dirname, 'music-preload.cjs') } });
   music.setBackgroundColor(nativeMaterialSupported?'#00000000':'#151a24');
   await music.webContents.loadURL('about:blank');
-  music.webContents.debugger.attach('1.3');
-  await music.webContents.debugger.sendCommand('Page.enable');
-  await music.webContents.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', { source: fs.readFileSync(path.join(__dirname, 'page-hooks.js'), 'utf8') });
+  let hooksReady=false;music.webContents.debugger.on('detach',()=>hooksReady=false);
+  const ensureHooks=async()=>{if(hooksReady)return;if(!music.webContents.debugger.isAttached())music.webContents.debugger.attach('1.3');await music.webContents.debugger.sendCommand('Page.enable');await music.webContents.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument',{source:fs.readFileSync(path.join(__dirname,'page-hooks.js'),'utf8')});hooksReady=true;};await ensureHooks();
   const desktopUA = music.webContents.getUserAgent().replace(/\sElectron\/\S+/g,'').replace(/\sjamstorm\/\S+/gi,'');
   musicSession.webRequest.onBeforeSendHeaders((details, callback) => {
     const headers = { ...details.requestHeaders }, host = new URL(details.url).hostname;
-    if (mode === 'tv' && ['youtube.com','googlevideo.com','ytimg.com','google.com','googleapis.com','gstatic.com','ggpht.com'].some(domain=>host===domain||host.endsWith('.'+domain))) {
+    if (mode === 'tv' && host!=='music.youtube.com' && ['youtube.com','googlevideo.com','ytimg.com','google.com','googleapis.com','gstatic.com','ggpht.com'].some(domain=>host===domain||host.endsWith('.'+domain))) {
       for (const key of Object.keys(headers)) if (key.toLowerCase()==='user-agent' || key.toLowerCase().startsWith('sec-ch-ua')) delete headers[key];
       Object.assign(headers, { 'User-Agent':tvUA,'sec-ch-ua':'"JamDesktop";v="27"','sec-ch-ua-mobile':'?0','sec-ch-ua-platform':'"Starboard"' });
     }
     callback({requestHeaders:headers});
   });
   const applyMode = async value => {
-    mode = value; player.mode = mode;
+    await ensureHooks();mode = value; player.mode = mode;
     musicSession.setUserAgent(mode === 'tv' ? tvUA : desktopUA);
     await music.webContents.debugger.sendCommand('Emulation.setUserAgentOverride', { userAgent: mode === 'tv' ? tvUA : desktopUA, ...(mode === 'tv' ? { userAgentMetadata: { brands:[{brand:'JamDesktop',version:'27'}], fullVersionList:[{brand:'JamDesktop',version:'27.lts.3'}], platform:'Starboard',platformVersion:'',architecture:'x86',model:'',mobile:false,bitness:'64',wow64:false } } : {}) });
     music.webContents.setUserAgent(mode === 'tv' ? tvUA : desktopUA);
@@ -112,8 +112,10 @@ app.whenReady().then(async () => {
   window.contentView.addChildView(music);
   const fullscreen=()=>{layout();send('app:fullscreen',window.isFullScreen());};
   window.on('enter-full-screen',fullscreen);window.on('leave-full-screen',fullscreen);
-  let tvBackPendingUntil=0;
-  for(const wc of [window.webContents,music.webContents])wc.on('before-input-event',(e,input)=>{if(wc===music.webContents&&input.type==='keyDown'&&input.key==='Escape'&&tvBackPendingUntil>Date.now()){tvBackPendingUntil=0;return;}if(input.type==='keyDown'&&(input.control||input.meta)&&(input.code==='KeyK'||['k','л'].includes(input.key.toLowerCase()))&&mode==='music'){e.preventDefault();selectedTab='music';layout();send('app:search-open',{});window.webContents.focus();}if(input.type==='keyDown'&&!input.isAutoRepeat&&(input.key==='F11'||input.key==='Escape'&&window.isFullScreen())){e.preventDefault();window.setFullScreen(input.key==='F11'?!window.isFullScreen():false);}});
+  let tvBackPendingUntil=0,backTask=null,lastBack=0;
+  const prepareNavigation=()=>new Promise(resolve=>{const token=require('node:crypto').randomUUID();let timer;const done=()=>{clearTimeout(timer);ipcMain.removeListener('player:navigation-ready',ready);resolve();};const ready=(event,value)=>{if(event.sender===music.webContents&&event.senderFrame===music.webContents.mainFrame&&value===token)done();};ipcMain.on('player:navigation-ready',ready);timer=setTimeout(done,250);music.webContents.send('player:prepare-navigation',token);});
+  const tvBack=()=>{if(backTask)return backTask;if(Date.now()-lastBack<350)return Promise.resolve();lastBack=Date.now();backTask=(async()=>{await prepareNavigation();if(mode!=='tv'||music.webContents.isDestroyed())return;music.webContents.focus();tvBackPendingUntil=Date.now()+1000;music.webContents.sendInputEvent({type:'keyDown',keyCode:'Escape'});music.webContents.sendInputEvent({type:'keyUp',keyCode:'Escape'});})().finally(()=>backTask=null);return backTask;};
+  for(const wc of [window.webContents,music.webContents])wc.on('before-input-event',(e,input)=>{if(wc===music.webContents&&input.type==='keyDown'&&input.key==='Escape'&&tvBackPendingUntil>Date.now()){tvBackPendingUntil=0;return;}if(wc===music.webContents&&mode==='tv'&&input.type==='keyDown'&&input.key==='Escape'){e.preventDefault();if(!input.isAutoRepeat)tvBack().catch(()=>{});return;}if(input.type==='keyDown'&&(input.control||input.meta)&&(input.code==='KeyK'||['k','л'].includes(input.key.toLowerCase()))&&mode==='music'){e.preventDefault();selectedTab='music';layout();send('app:search-open',{});window.webContents.focus();}if(input.type==='keyDown'&&!input.isAutoRepeat&&(input.key==='F11'||input.key==='Escape'&&window.isFullScreen())){e.preventDefault();window.setFullScreen(input.key==='F11'?!window.isFullScreen():false);}});
   for (const event of ['will-navigate', 'will-redirect']) music.webContents.on(event, (e, url) => { if (!remoteAllowed(url)) e.preventDefault(); });
   music.webContents.setWindowOpenHandler(({url}) => {
     // Login links may request a new window; preserve the isolated session.
@@ -132,7 +134,8 @@ app.whenReady().then(async () => {
     if (mainFrame && code !== -3) { selectedTab = 'jam'; layout(); send('player:state', { phase: 'error', message: 'YouTube Music не загрузился. Проверь подключение к интернету.' }); }
   });
   player = new JamPlayer(music.webContents);player.policy=policy;
-  player.native=new NativeQueue(music.webContents,()=>mode);
+  const musicMetadata=new (require('./music-metadata.cjs').MusicMetadata)(()=>{const view=new WebContentsView({webPreferences:{...prefs,session:musicSession}});view.webContents.setUserAgent(desktopUA);view.webContents.setAudioMuted(true);view.webContents.setWindowOpenHandler(()=>({action:'deny'}));view.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith('https://music.youtube.com/'))event.preventDefault();});return view;});
+  player.native=new NativeQueue(music.webContents,()=>mode,musicMetadata);
   addons = new Addons(path.join(app.getPath('userData'), 'addons.json'), music.webContents, player);
   await addons.configure();
   await applyMode(smoke?(liveSmoke&&!musicSmoke?'tv':'music'):savedMode);
@@ -141,6 +144,9 @@ app.whenReady().then(async () => {
     if (!music.webContents.isDestroyed()) music.webContents.setAudioMuted(state.role === 'guest');
     send('jam:state', state);
   });
+  const log=(kind,details={})=>{try{const dir=app.getPath('logs');fs.mkdirSync(dir,{recursive:true});const file=path.join(dir,'runtime.log');if(fs.existsSync(file)&&fs.statSync(file).size>1000000)fs.renameSync(file,path.join(dir,'runtime.previous.log'));fs.appendFileSync(file,JSON.stringify({time:new Date().toISOString(),version:app.getVersion(),kind,mode,...details})+'\n');}catch{}};
+  const recovery=new (require('./renderer-recovery.cjs').RendererRecovery)(async()=>{await music.webContents.loadURL('about:blank');await applyMode(mode);await addons.configure();await music.webContents.loadURL(home());},phase=>{log('renderer-'+phase);send('player:state',{phase,message:(phase==='recovered'?'Плеер восстановлен после сбоя.':phase==='recovering'?'Восстанавливаем плеер…':'Плеер остановился. Нажми «Повторить».')});});
+  music.webContents.on('render-process-gone',(_event,details)=>{log('renderer-gone',{reason:details.reason,exitCode:details.exitCode});if(window&&!window.isDestroyed())recovery.recover(details);});music.webContents.on('unresponsive',()=>log('renderer-unresponsive'));
   const handle = (name, fn) => ipcMain.handle(name, async (event, ...args) => {
     try { guard(event);return { ok: true, value: await fn(...args) }; } catch (e) { return { ok: false, error: e?.message||'Плеер ещё загружается. Попробуй ещё раз.' }; }
   });
@@ -167,7 +173,7 @@ app.whenReady().then(async () => {
   handle('app:navigation',navigationState);
   handle('app:navigate',async action=>{
     const history=music.webContents.navigationHistory,value=targets();
-    if(action==='back'&&mode==='tv'){music.webContents.focus();tvBackPendingUntil=Date.now()+1000;music.webContents.sendInputEvent({type:'keyDown',keyCode:'Escape'});music.webContents.sendInputEvent({type:'keyUp',keyCode:'Escape'});}
+    if(action==='back'&&mode==='tv')await tvBack();
     else if(action==='back'&&value.back>=0)history.goToIndex(value.back);
     else if(action==='forward'&&mode!=='tv'&&value.forward>=0)history.goToIndex(value.forward);
     else if(action==='home'&&music.webContents.getURL()!==home()+'/')await music.webContents.loadURL(home());
@@ -232,7 +238,7 @@ app.whenReady().then(async () => {
   handle('jam:copy', () => { if (!jam.state.invite) throw new Error('Сначала создай Jam'); clipboard.writeText(jam.state.invite); });
   handle('jam:qr', () => { if (!jam.state.invite) throw new Error('Сначала создай Jam'); return QRCode.toDataURL(jam.state.invite, { errorCorrectionLevel: 'M', margin: 3, width: 256 }); });
   handle('app:tab', async tab => { if (!['music','catalog','jam','invite','settings'].includes(tab)) throw new Error('Unknown tab');selectedTab=tab;layout();if(tab==='catalog')music.webContents.focus();else window.webContents.focus();return {mode}; });
-  handle('app:mode', async value => { if (!['tv', 'music'].includes(value)) throw new Error('Unknown player'); await applyMode(value);if(!smoke)fs.writeFileSync(modeFile,JSON.stringify({mode:value})); selectedTab = 'music'; layout(); send('app:mode',mode);await music.webContents.loadURL(home());music.webContents.navigationHistory.clear(); });
+  handle('app:mode', async value => { if (!['tv', 'music'].includes(value)) throw new Error('Unknown player'); await prepareNavigation();await applyMode(value);if(!smoke)fs.writeFileSync(modeFile,JSON.stringify({mode:value})); selectedTab = 'music'; layout(); send('app:mode',mode);await music.webContents.loadURL(home());music.webContents.navigationHistory.clear(); });
   handle('room:start', async () => { if (jam.state.role === 'guest') throw new Error('Для браузерной комнаты хостом должен быть этот ПК'); if (jam.state.role !== 'host') { await jam.host(controlledCommand); } return room.start(); });
   handle('room:state', roomView);
   handle('room:stop', () => { tunnel.stop(); room.stop(); return roomView(); });
@@ -240,13 +246,15 @@ app.whenReady().then(async () => {
   handle('room:local', () => { tunnel.stop(); return roomView(); });
   handle('room:copy', () => { if (!room.url) throw new Error('Открой комнату'); clipboard.writeText(roomView().publicUrl || room.url); });
   handle('room:qr', () => { if (!room.url) throw new Error('Открой комнату'); return QRCode.toDataURL(roomView().publicUrl || room.url, { margin: 3, width: 256 }); });
-  const browserLogin=new (require('./browser-login.cjs').BrowserLogin)(path.join(app.getPath('userData'),'login-browser'),musicSession,async()=>{const previous=mode;await applyMode('music');await music.webContents.loadURL('https://music.youtube.com/');const connected=await music.webContents.executeJavaScript(`new Promise(resolve=>{let attempts=0;const check=()=>{if(window.ytcfg?.get('LOGGED_IN')===true)return resolve(true);if(++attempts>40)return resolve(false);setTimeout(check,200);};check();})()`);if(previous==='tv'){await applyMode('tv');await music.webContents.loadURL(home());}if(!connected)throw Error('YouTube did not confirm login');selectedTab='catalog';layout();send('app:mode',mode);},text=>send('app:login-state',text));
+  const browserLogin=new (require('./browser-login.cjs').BrowserLogin)(path.join(app.getPath('userData'),'login-browser-human'),musicSession,async()=>{const previous=mode;await applyMode('music');await music.webContents.loadURL('https://music.youtube.com/');const connected=await music.webContents.executeJavaScript(`new Promise(resolve=>{let attempts=0;const check=()=>{if(window.ytcfg?.get('LOGGED_IN')===true)return resolve(true);if(++attempts>40)return resolve(false);setTimeout(check,200);};check();})`);if(previous==='tv'){await applyMode('tv');await music.webContents.loadURL(home());}if(!connected)throw Error('YouTube did not confirm login');selectedTab='catalog';layout();send('app:mode',mode);},text=>send('app:login-state',text));
   app.once('before-quit',()=>{if(browserLogin.active){browserLogin.command('Browser.close').catch(()=>{});browserLogin.stop();}});
   handle('app:login', async () => {if(smoke){selectedTab='catalog';layout();await music.webContents.loadURL('https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F');return;}return browserLogin.start();});
   for(const event of ['will-navigate','will-redirect'])music.webContents.on(event,(e,url)=>{if(!smoke&&new URL(url).hostname==='accounts.google.com'){e.preventDefault();browserLogin.start().catch(error=>send('app:login-state',error.message));}});
   handle('app:retry', async () => { selectedTab = 'music'; layout(); send('app:mode',mode);await music.webContents.loadURL(home()); });
   ipcMain.on('player:cast',event=>{if(event.sender!==music.webContents||event.senderFrame!==music.webContents.mainFrame)return;selectedTab='settings';layout();send('app:cast',{});window.webContents.focus();});
   handle('app:open-browser',async()=>{const sample=await player.sample();const url='https://music.youtube.com'+(sample?.videoId&&/^[\w-]{11}$/.test(sample.videoId)?'/watch?v='+sample.videoId:'');await require('electron').shell.openExternal(url);});
+  ipcMain.on('player:tv-exit',event=>{if(event.sender!==music.webContents||event.senderFrame!==music.webContents.mainFrame||mode!=='tv')return;log('tv-exit-intercepted');prepareNavigation().then(()=>music.webContents.loadURL(home())).catch(()=>{});});
+  ipcMain.handle('player:authorize',async event=>{if(event.sender!==music.webContents||event.senderFrame!==music.webContents.mainFrame||mode!=='tv')return {allowed:false};if(!policy.settings.blockExplicit)return {allowed:true};const before=await player.sample();if(!/^[\w-]{11}$/.test(before?.videoId||''))return {allowed:false};const info=await musicMetadata.get(before.videoId),after=await player.sample();if(after?.videoId!==before.videoId||mode!=='tv')return {allowed:false};const allowed=!policy.settings.blockExplicit||info.known&&!info.explicit;if(!allowed)send('player:state',{phase:'blocked',message:info.known?'Трек с маркировкой E заблокирован':'Не удалось проверить маркировку E. Трек приостановлен.'});return {allowed,videoId:before.videoId};});
   ipcMain.on('player:ended', event => {
     if (!player.native&&event.sender === music.webContents && event.senderFrame === music.webContents.mainFrame && jam.state.role === 'host') jam.command('SKIP_NEXT').catch(() => {});
   });
@@ -264,7 +272,7 @@ app.whenReady().then(async () => {
       await music.webContents.executeJavaScript(`document.documentElement.style.setProperty('--jamstorm-ambient',${JSON.stringify(color.join(' '))})`);
     }catch{}finally{ambientBusy=false;}
   },2500);
-  window.on('closed',()=>clearInterval(ambientTimer));
+  window.on('closed',()=>{clearInterval(ambientTimer);musicMetadata.close();recovery.close();});
   window.on('resize', layout); window.on('closed', () => { tunnel.stop(); room.stop(); jam.disconnect(); if(!music.webContents.isDestroyed())music.webContents.close({waitForBeforeUnload:false}); window = null; });
   await window.loadFile(path.join(__dirname, 'ui/index.html')); layout();send('app:mode',mode);
   if (smoke) {
@@ -306,9 +314,11 @@ app.whenReady().then(async () => {
     const capture=async name=>{try{fs.writeFileSync(path.join(dir,name),(await window.webContents.capturePage()).toPNG());}catch(error){if(!error.message.includes('Current display surface not available'))throw error;console.log('CAPTURE_UNAVAILABLE',name);}};
     const dir = app.isPackaged ? path.join(app.getPath('temp'), 'jam-desktop-smoke-artifacts') : path.join(__dirname, '../artifacts'); fs.mkdirSync(dir, { recursive: true });
     await new Promise(resolve => setTimeout(resolve, 300));
+    if(process.argv.includes('--recovery-test')){await music.webContents.loadURL('https://music.youtube.com/');music.webContents.forcefullyCrashRenderer();let restored=false;for(let i=0;i<300;i++){await new Promise(resolve=>setTimeout(resolve,150));if(recovery.failures.length&&!recovery.pending){restored=await music.webContents.executeJavaScript(`location.hostname==='music.youtube.com'&&typeof window.jam==='undefined'`).catch(()=>false);break;}}console.log('RENDERER_RECOVERY_OK',restored);return finishSmoke(restored?0:1);}
     if (!liveSmoke) fs.writeFileSync(path.join(dir, 'desktop.png'), (await window.webContents.capturePage(undefined, { stayHidden: true, stayAwake: true })).toPNG());
     if (liveSmoke) {
-      await addons.set('adblock',true);
+      await addons.set('adblock',!process.argv.includes('--no-adblock'));
+      if(process.argv.includes('--playback-only')){await music.webContents.debugger.sendCommand('Network.enable');music.webContents.debugger.on('message',(_event,method,params)=>{if(method==='Network.responseReceived'&&params.response?.url.includes('.googlevideo.com/'))console.log('MEDIA_HTTP',JSON.stringify({status:params.response.status,type:params.response.mimeType,path:new URL(params.response.url).pathname}));});}
 
       selectedTab = mode==='tv'?'catalog':'music'; layout();await window.webContents.executeJavaScript(`tab(${JSON.stringify(mode==='tv'?'catalog':'music')})`);
       window.restore(); window.focus(); window.webContents.focus();
@@ -318,6 +328,8 @@ app.whenReady().then(async () => {
         await music.webContents.executeJavaScript(`new Promise(resolve=>{let count=0;const poll=()=>{if(document.body.innerText.trim().length>30||++count>200)return resolve();setTimeout(poll,100);};poll();})`);
         const remote = await music.webContents.executeJavaScript(`({ title: document.title, url: location.href, app: !!document.querySelector('ytmusic-app, #app') || !!window._yttv, require: typeof require, bridge: typeof window.jam, visible: document.visibilityState })`);
         console.log('LIVE_SMOKE', JSON.stringify(remote));
+        if(process.argv.includes('--playback-only')){await player.select({id:'playback',videoId:'5NV6Rdv1a3I'},true);await player.ready('5NV6Rdv1a3I');await new Promise(resolve=>setTimeout(resolve,2500));const sample=await player.sample();console.log('PLAYBACK_ONLY',JSON.stringify(sample));if(!sample.playing)throw Error('No playback');clearTimeout(timeout);return finishSmoke(0);}
+        if(process.argv.includes('--metadata-check')){for(const id of ['5NV6Rdv1a3I','XbGs_qK2PQA']){const value=await musicMetadata.get(id);console.log('LIVE_TV_METADATA',JSON.stringify({id,...value}));if(!value.known){console.log('METADATA_ERROR',musicMetadata.lastError);console.log('METADATA_CLIENT',await musicMetadata.view?.webContents.executeJavaScript(`({host:location.hostname,path:location.pathname,title:document.title,app:!!document.querySelector('ytmusic-app'),network:typeof document.querySelector('ytmusic-app')?.networkManager?.fetch})`).catch(()=>null));throw Error('TV metadata unavailable');}}const explicitRows=await musicMetadata.view.webContents.executeJavaScript(`(async()=>{const response=await document.querySelector('ytmusic-app').networkManager.fetch('/search',{query:'Eminem Rap God'}),found=[];const visit=o=>{if(!o||typeof o!=='object')return;const row=o.musicResponsiveListItemRenderer,id=row?.playlistItemData?.videoId;if(id&&/MUSIC_EXPLICIT_BADGE|EXPLICIT/.test(JSON.stringify(row.badges||[])))found.push(id);for(const value of Object.values(o))if(value&&typeof value==='object')visit(value);};visit(response);return [...new Set(found)].slice(0,4);})()`);console.log('MUSIC_EXPLICIT_SEARCH',explicitRows);if(!explicitRows.length)throw Error('No marked Music reference track');let confirmed=false;for(const id of explicitRows){const value=await musicMetadata.get(id);console.log('MARKED_TRACK',JSON.stringify({id,known:value.known,explicit:value.explicit}));if(value.known&&value.explicit)confirmed=true;}if(!confirmed)throw Error('Marked Music tracks lost E badge');clearTimeout(timeout);return finishSmoke(0);}
         if(process.argv.includes('--tv-review')){await require('../scripts/tv-review.cjs')({window,music,player,dir,path,fs});clearTimeout(timeout);return finishSmoke(0);}
         if(process.argv.includes('--catalog-review')){
           await require('../scripts/catalog-review.cjs')({window,music,dir,path,fs});clearTimeout(timeout);return finishSmoke(0);
@@ -437,7 +449,7 @@ app.whenReady().then(async () => {
         await new Promise(resolve=>setTimeout(resolve,2000));
         const login=await music.webContents.executeJavaScript(`({host:location.hostname,input:!!document.querySelector('input[type=email],input[name=identifier]'),unsupported:/couldn.t sign you in|browser or app may not be secure/i.test(document.body.innerText)})`);
         console.log('MUSIC_LOGIN',JSON.stringify(login));if(login.host!=='accounts.google.com'||!login.input||login.unsupported)throw Error('Google sign-in page unavailable');
-      } catch (e) { console.error('LIVE_SMOKE_FAILED', e.message); console.log('TV_DIAGNOSTIC', await music.webContents.executeJavaScript(`({url:location.href,text:document.body.innerText.slice(-2000),video:!!document.querySelector('video'),ready:document.querySelector('video')?.readyState,src:!!document.querySelector('video')?.currentSrc,player:document.querySelector('.html5-video-player')?.getPlayerState?.(),resources:performance.getEntriesByType('resource').map(x=>({url:x.name.split('?')[0],duration:x.duration})).slice(-8)})`)); clearTimeout(timeout); return finishSmoke(1); }
+      } catch (e) { console.error('LIVE_SMOKE_FAILED', e.message); console.log('TV_DIAGNOSTIC', await music.webContents.executeJavaScript(`({url:location.href,text:document.body.innerText.slice(-2000),video:!!document.querySelector('video'),ready:document.querySelector('video')?.readyState,src:!!document.querySelector('video')?.currentSrc,mime:window.__jamstormMimeChecks,error:document.querySelector('video')?.error?{code:document.querySelector('video').error.code,message:document.querySelector('video').error.message}:null,player:document.querySelector('.html5-video-player')?.getPlayerState?.(),resources:performance.getEntriesByType('resource').map(x=>({url:x.name.split('?')[0],duration:x.duration})).slice(-8)})`)); clearTimeout(timeout); return finishSmoke(1); }
       clearTimeout(timeout);
     }
     finishSmoke(result.bridge === 'function' && !!result.heading ? 0 : 1);

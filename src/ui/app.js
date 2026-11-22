@@ -64,7 +64,7 @@ async function tab(value) {
   document.querySelector('main .page-heading h1').textContent=({jam:'Твоя очередь',invite:'Вместе звучит лучше',settings:'Настройки'})[value]||'Музыка';
   for (const name of ['music','catalog','jam','invite','settings']) { $(`${name}-tab`).classList.toggle('active', name === value); $(`${name}-tab`).setAttribute('aria-pressed', String(name === value)); }
 }
-window.jam.onLogin(text=>message(text));
+window.jam.onLogin(text=>{const hint=$('music-login').closest('.setting-row')?.querySelector('small');if(hint)hint.textContent=text;message(text);});
 $('music-login').onclick=()=>action(async()=>{await call(window.jam.login());});
 $('catalog-tab').onclick=()=>action(()=>tab('catalog'));
 $('music-tab').addEventListener('click', () => action(() => tab('music')));
@@ -95,6 +95,7 @@ window.jam.onState(render);
 window.jam.onPlayer(value => {
   if (value.phase === 'fallback') { $('player-mode').value='music';window.listening.mode('music');message(value.message); }
   if (value.phase === 'error') { $('player-error-text').textContent = value.message; $('player-error').hidden = false; tab('jam').catch(() => {}); }
+  if(value.phase==='blocked'||value.phase==='recovering'||value.phase==='recovered')message(value.message);
   if (value.phase === 'ready') $('player-error').hidden = true;
 });
 call(window.jam.state()).then(render).catch(error => message(error.message));

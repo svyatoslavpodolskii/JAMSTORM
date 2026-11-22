@@ -1,4 +1,5 @@
 const { ipcRenderer } = require('electron');
+window.addEventListener('jamstorm-tv-exit',()=>{if(location.hostname==='www.youtube.com'&&location.pathname==='/tv')ipcRenderer.send('player:tv-exit');});
 // Keep catalog cards below the fixed header without changing YouTube's player
 // geometry or its document scroll/history. A paint clip extends beyond the
 // small, overflow-visible #content box used by the current site layout.
@@ -24,24 +25,25 @@ document.addEventListener('ended', event => {
 
 // Analyse an independent capture of an existing same-origin MediaSource stream.
 // It is never connected to speakers and never replaces the player's audio path.
-let visualsEnabled=false,analysis=null,analysisBusy=false;
-function stopAnalysis(){if(!analysis)return;analysis.stream.getTracks().forEach(track=>track.stop());analysis.context.close().catch(()=>{});analysis=null;}
+let visualsEnabled=false,analysis=null,pendingAnalysis=null,analysisBusy=false,analysisEpoch=0,navigationHold=false,analysisClosing=Promise.resolve();
+function stopAnalysis(){analysisEpoch++;const old=analysis||pendingAnalysis;analysis=pendingAnalysis=null;if(!old)return analysisClosing;old.stream.getTracks().forEach(track=>track.stop());analysisClosing=Promise.all([analysisClosing,old.context.close().catch(()=>{})]);return analysisClosing;}
 ipcRenderer.on('visual:enabled',(_event,value)=>{visualsEnabled=!!value;if(visualsEnabled&&!document.querySelector('.jamstorm-ambient')){const light=document.createElement('div');light.className='jamstorm-ambient';document.body?.prepend(light);}if(!visualsEnabled)stopAnalysis();});
 async function startAnalysis(video){
- if(analysis||analysisBusy||!visualsEnabled||video.paused||typeof video.captureStream!=='function'||!video.currentSrc.startsWith('blob:'+location.origin+'/'))return;
+ if(analysis||analysisBusy||navigationHold||!visualsEnabled||video.paused||!video.isConnected||typeof video.captureStream!=='function'||!video.currentSrc.startsWith('blob:'+location.origin+'/'))return;
  analysisBusy=true;
+ const epoch=analysisEpoch;
  let stream,context;
  try{
   stream=video.captureStream();stream.getVideoTracks().forEach(track=>track.stop());if(!stream.getAudioTracks().length){stream.getTracks().forEach(track=>track.stop());return;}
-  context=new AudioContext();await context.resume();if(!visualsEnabled){stream.getTracks().forEach(track=>track.stop());context.close().catch(()=>{});return;}const analyser=context.createAnalyser();analyser.fftSize=256;analyser.smoothingTimeConstant=.75;
+  context=new AudioContext();pendingAnalysis={stream,context};await context.resume();if(!visualsEnabled||navigationHold||epoch!==analysisEpoch||!video.isConnected){stream.getTracks().forEach(track=>track.stop());context.close().catch(()=>{});return;}const analyser=context.createAnalyser();analyser.fftSize=256;analyser.smoothingTimeConstant=.75;
   context.createMediaStreamSource(new MediaStream(stream.getAudioTracks())).connect(analyser);
   analysis={video,stream,context,analyser,samples:new Uint8Array(analyser.frequencyBinCount)};
  }catch{stream?.getTracks().forEach(track=>track.stop());context?.close().catch(()=>{});}
- finally{analysisBusy=false;}
+ finally{if(pendingAnalysis?.context===context)pendingAnalysis=null;analysisBusy=false;}
 }
 setInterval(()=>{
  if(!visualsEnabled)return;
- const video=document.querySelector('video');if(!video)return;if(analysis?.video!==video)stopAnalysis();
+ const video=document.querySelector('video');if(!video||!video.isConnected){stopAnalysis();return;}if(analysis?.video!==video&&analysis)stopAnalysis();
  if(!analysis){startAnalysis(video);return;}
  let level=0;
  if(!video.paused){analysis.analyser.getByteFrequencyData(analysis.samples);level=Math.min(1,Math.sqrt(analysis.samples.slice(1,48).reduce((sum,value)=>sum+value*value,0)/47)/180);}
@@ -50,7 +52,28 @@ setInterval(()=>{
  const light=document.querySelector('.jamstorm-ambient');if(light)light.style.opacity=String(.38+level*.13);
 },160);
 window.addEventListener('pagehide',stopAnalysis);
+for(const event of ['emptied','abort'])document.addEventListener(event,event=>{if(event.target===analysis?.video)stopAnalysis();},true);
+ipcRenderer.on('player:prepare-navigation',async(_event,token)=>{navigationHold=true;await stopAnalysis();ipcRenderer.send('player:navigation-ready',token);setTimeout(()=>navigationHold=false,1200);});
 
 // The Cast icon is present in the site even when this runtime has no Media Router.
 document.addEventListener('click',event=>{if(event.composedPath().some(el=>el?.tagName==='YTMUSIC-CAST-BUTTON')){event.preventDefault();event.stopImmediatePropagation();ipcRenderer.send('player:cast');}},true);
-ipcRenderer.on('filter:enabled',(_event,value)=>{if(document.documentElement)document.documentElement.dataset.jamstormExplicit=value?'block':'allow';});
+// Pause before a TV stream can sound. The main process verifies the current
+// video against Music's real E badge; playlist IDs are not evidence of safety.
+let blockExplicit=true,gateTicket=0;
+const generations=new WeakMap(),approved=new WeakMap(),wanted=new WeakSet();
+const isTV=()=>location.hostname==='www.youtube.com'&&location.pathname==='/tv';
+function authorizeTV(video){
+ if(!isTV()||!blockExplicit||!(video instanceof HTMLMediaElement))return;
+ const generation=generations.get(video)||0;if(approved.get(video)===generation)return;
+ wanted.add(video);video.pause();const ticket=++gateTicket;
+ ipcRenderer.invoke('player:authorize').then(result=>{
+  if(ticket!==gateTicket||!video.isConnected||generation!==(generations.get(video)||0)||navigationHold||!blockExplicit)return;
+  if(result?.allowed){if(result.videoId)document.documentElement.dataset.jamApprovedVideo=result.videoId;approved.set(video,generation);video.play().catch(()=>{});}else wanted.delete(video);
+ }).catch(()=>wanted.delete(video));
+}
+document.addEventListener('play',event=>authorizeTV(event.target),true);
+document.addEventListener('loadstart',event=>{if(event.target instanceof HTMLMediaElement){generations.set(event.target,(generations.get(event.target)||0)+1);approved.delete(event.target);gateTicket++;}},true);
+document.addEventListener('loadedmetadata',event=>{if(wanted.has(event.target))authorizeTV(event.target);},true);
+window.addEventListener('jamstorm-track-check',()=>{const video=document.querySelector('video');if(video){approved.delete(video);authorizeTV(video);}});
+ipcRenderer.on('player:prepare-navigation',()=>{gateTicket++;});
+ipcRenderer.on('filter:enabled',(_event,value)=>{blockExplicit=!!value;if(document.documentElement)document.documentElement.dataset.jamstormExplicit=value?'block':'allow';const video=document.querySelector('video');if(value&&video&&!video.paused)authorizeTV(video);});
