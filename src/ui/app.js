@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 let roomState={active:false,guests:0};
-let state = { phase: 'idle', queue: null }, busy = false, lastQueueSignature = '', qrInvite = '';
+let state = { phase: 'idle', queue: null }, busy = false, lastQueueSignature = '', qrInvite = '',feedbackFor='',feedbackValue=null;
 const time = ms => { const s = Math.max(0, Math.floor((ms || 0) / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 function message(text) { $('message').textContent = text || ''; $('message').hidden = !text; }
 async function call(promise) { const result = await promise; if (!result.ok) throw new Error(result.error); return result.value; }
@@ -13,6 +13,9 @@ async function action(fn) {
 function current() { return state.queue?.items?.find(i => i.current)||state.queue?.nowPlaying; }
 function render(next) {
   state = next;window.listening?.render(next.queue);
+  document.body.classList.toggle('remote-playback',next.role==='guest');
+  document.body.classList.toggle('video-unavailable',next.queue?.videoAvailable===false);
+  renderFeedback(next.queue?.feedback);
   const online = state.phase === 'connected'; const connecting = state.phase === 'connecting';
   $('status').textContent = connecting ? 'Подключаемся…' : state.role==='guest'&&online ? 'Музыка на телефоне' : roomState.active ? 'Комната открыта · гостей: '+((roomState.guests||0)+(state.peers||0)) : online ? 'Jam готов · участников: '+(state.peers||0) : state.phase==='error' ? 'Подключение прервано' : 'Личное прослушивание';
   $('status').classList.toggle('online', online); $('peer-dot').classList.toggle('online', online);
@@ -63,20 +66,20 @@ async function tab(value) {
   for(const [id,key] of [['queue-page','jam'],['invite-page','invite'],['settings-page','settings']]) $(id).hidden=value!==key;
   document.querySelector('.intro').textContent=({jam:'Всё, что хочется услышать дальше.',invite:'Один плеер. Каждый добавляет своё.',settings:'Пусть всё будет по-твоему.'})[value]||'';
   document.querySelector('main .page-heading h1').textContent=({jam:'Твоя очередь',invite:'Вместе звучит лучше',settings:'Настройки'})[value]||'Музыка';
-  for (const name of ['music','catalog','jam','invite','settings']) { $(`${name}-tab`).classList.toggle('active', name === value); $(`${name}-tab`).setAttribute('aria-pressed', String(name === value)); }
+  window.dispatchEvent(new Event('appearance-surface-change'));for (const name of ['music','catalog','jam','invite','settings']) { $(`${name}-tab`).classList.toggle('active', name === value); $(`${name}-tab`).setAttribute('aria-pressed', String(name === value)); }
 }
 window.jam.onLogin(text=>{const hint=$('music-login').closest('.setting-row')?.querySelector('small');if(hint)hint.textContent=text;message(text);});
 $('music-login').onclick=()=>action(async()=>{await call(window.jam.login());});
 const tvAccountRow=document.createElement('div');tvAccountRow.className='setting-row';
 tvAccountRow.innerHTML='<span><strong>Аккаунт Music TV</strong><small id="tv-account-status">Отдельное подключение в YouTube TV</small></span><button id="tv-login" class="secondary">Подключить TV</button>';
-$('music-login').closest('.setting-row').after(tvAccountRow);
+const accountRow=$('music-login').closest('.setting-row');accountRow.querySelector('strong').textContent='Аккаунт Google';
+const accountDetails=document.createElement('details');accountDetails.className='account-details';accountDetails.innerHTML='<summary>Управление аккаунтами</summary><div class="setting-row"><span><strong>YouTube Music</strong><small>Открыть вход для другого аккаунта</small></span><button id="music-account-switch" class="secondary">Сменить</button></div>';accountDetails.append(tvAccountRow);accountRow.after(accountDetails);
+$('music-account-switch').onclick=()=>action(async()=>{await call(window.jam.login('music'));});
 function renderAccounts(value){
- for(const kind of ['music','tv']){
-  const signed=value[kind]==='signed-in',button=$(kind==='music'?'music-login':'tv-login');button.dataset.accountState=value[kind]||'unknown';
-  const hint=button.closest('.setting-row').querySelector('small');
-  button.textContent=kind==='music'?(signed?'Сменить аккаунт':'Войти'):(signed?'Открыть TV':'Подключить TV');
-  hint.textContent=signed?'Вход выполнен':kind==='tv'?'Вход по коду в самом YouTube TV':value.music==='signed-out'?'Вход через Chrome или Edge':'Проверяем подключение Music…';
- }
+ const music=value.music==='signed-in',tv=value.tv==='signed-in',primary=$('music-login'),tvButton=$('tv-login');primary.dataset.accountState=value.music||'unknown';tvButton.dataset.accountState=value.tv||'unknown';
+ primary.textContent=music&&tv?'Подключено':music?'Подключить TV':'Войти';primary.disabled=music&&tv;
+ accountRow.querySelector('small').textContent=music?(tv?'Music и TV подключены':'Music подключён · осталось подключить TV'):'Один сценарий подключения Music и TV';
+ tvButton.textContent=tv?'Открыть TV':'Подключить TV';$('tv-account-status').textContent=tv?'Вход выполнен':'Google подтвердит подключение по коду';
 }
 async function refreshAccounts(){try{renderAccounts(await call(window.jam.accounts()));}catch{}}
 window.jam.onAccounts(renderAccounts);call(window.jam.accounts(false)).then(renderAccounts).catch(()=>{});
@@ -84,9 +87,10 @@ window.jam.onLogin(text=>{if(text.startsWith('Вход завершён'))refres
 $('tv-login').onclick=()=>action(async()=>{await call(window.jam.login('tv'));await tab('catalog');});
 const feedbackGroup=document.createElement('div');feedbackGroup.className='panel-switches track-feedback';feedbackGroup.setAttribute('aria-label','Оценка трека');
 for(const [kind,label,path] of [['like','Нравится','M7 10v11H3V10zm0 0 5-8 2 1v6h5a2 2 0 0 1 2 2l-2 8a3 3 0 0 1-3 2H7'],['dislike','Не нравится','M7 14V3H3v11zm0 0 5 8 2-1v-6h5a2 2 0 0 0 2-2l-2-8a3 3 0 0 0-3-2H7'],['menu','Меню трека','M5 12h.01M12 12h.01M19 12h.01']]){
- const button=document.createElement('button');button.id='feedback-'+kind;button.title=label;button.setAttribute('aria-label',label);button.innerHTML='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="'+path+'"/></svg>';button.onclick=()=>action(async()=>{const result=await call(window.jam.feedback(kind));if(result?.page)await tab(result.page);});feedbackGroup.append(button);
+ const button=document.createElement('button');button.id='feedback-'+kind;button.title=label;button.setAttribute('aria-label',label);button.innerHTML='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="'+path+'"/></svg>';button.onclick=()=>action(async()=>{const result=await call(window.jam.feedback(kind));if(result?.page)await tab(result.page);if(result?.feedback){state={...state,queue:{...state.queue,feedback:result.feedback}};renderFeedback(result.feedback);}if(result?.message)message(result.message);});feedbackGroup.append(button);
 }
 document.querySelector('.dock-actions').prepend(feedbackGroup);
+function renderFeedback(value){const group=document.querySelector('.track-feedback');if(!group)return;const id=current()?.videoId||'';if(id!==feedbackFor){feedbackFor=id;feedbackValue=null;}if(value!==undefined&&(!value?.videoId||value.videoId===id))feedbackValue=value;group.hidden=state.role==='guest';for(const [kind,label] of [['like','Нравится'],['dislike','Не нравится']]){const button=$('feedback-'+kind),info=feedbackValue?.[kind];button.disabled=busy||!info?.available;button.setAttribute('aria-pressed',String(!!info?.pressed));button.title=info?.available?(info.pressed?'Убрать отметку «'+label+'»':label):'Оценка пока недоступна';button.setAttribute('aria-label',button.title);}}
 setInterval(()=>{if(!$('settings-page').hidden)refreshAccounts();},10000);
 $('catalog-tab').onclick=()=>action(()=>tab('catalog'));
 $('music-tab').addEventListener('click', () => action(() => tab('music')));

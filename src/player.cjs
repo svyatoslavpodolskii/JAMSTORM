@@ -5,7 +5,7 @@ const videoId = /^[a-zA-Z0-9_-]{11}$/;
 // silently advertised as a fully imported editable queue.
 class JamPlayer {
   constructor(browser) { this.browser = browser; this.mode = 'tv'; this.reset(); this.tail = Promise.resolve(); }
-  reset() { this.items = []; this.current = null; this.serial = 0; this.revision = 0; this.generation = randomUUID(); this.playbackGeneration = randomUUID(); this.sequence = 0; this.observed = null; }
+  reset() { this.items = []; this.current = null; this.serial = 0; this.revision = 0; this.generation = randomUUID(); this.playbackGeneration = randomUUID(); this.sequence = 0; this.observed = null; this.lastMedia = null; }
   async sample() {
     if (this.browser.isDestroyed() || !['https://music.youtube.com', 'https://www.youtube.com'].includes(new URL(this.browser.getURL() || 'about:blank').origin)) return null;
     try {
@@ -17,7 +17,7 @@ class JamPlayer {
         const urlId = new URL(location.href).searchParams.get('v') || new URLSearchParams(location.hash.split('?')[1] || '').get('v');
         const id = advertisement ? urlId : data.video_id || data.videoId || urlId;
         const metadata = navigator.mediaSession?.metadata;
-        return { videoId: id, advertisement, ready:media?.readyState||0, hasMedia:!!media, title: advertisement ? '' : document.querySelector('ytmusic-player-bar .title')?.textContent?.trim() || metadata?.title || data.title || id,
+        return { videoId: id, advertisement, ready:media?.readyState||0, hasMedia:!!media, hasVideo:!!media&&media.videoWidth>0&&media.videoHeight>0, title: advertisement ? '' : document.querySelector('ytmusic-player-bar .title')?.textContent?.trim() || metadata?.title || data.title || id,
           artwork:advertisement?'':metadata?.artwork?.at(-1)?.src||'',artist: advertisement ? '' : metadata?.artist || data.author || '', playing: !!media && !media.paused,
           position: advertisement ? 0 : Math.round((media?.currentTime || 0) * 1000), duration: advertisement ? 0 : Math.round((Number.isFinite(media?.duration) ? media.duration : 0) * 1000) };
       })()`);
@@ -26,6 +26,7 @@ class JamPlayer {
   async snapshot() {
     if(this.native){let value=await this.native.read();if(this.policy?.settings.blockExplicit&&value.available&&value.items.some(i=>i.explicit)){const selected=value.items.findIndex(i=>i.current);if(value.items[selected]?.explicit){const next=value.items.findIndex((i,n)=>n>selected&&!i.explicit);if(next>=0)await this.native.command('PLAY',{index:next});else await this.browser.executeJavaScript(`document.querySelector('video')?.pause()`);value=await this.native.read();}for(let i=value.items.length-1;i>=0;i--)if(value.items[i].explicit&&!value.items[i].current)await this.native.command('REMOVE',{index:i});value=await this.native.read();value.items=value.items.filter(i=>!i.explicit);}this.nativeState=value; if(value.available)this.reconcile(value.items);else{this.items=[];this.current=null;}}
     const media = await this.sample();
+    this.lastMedia=media;
     if (media && videoId.test(media.videoId || '') && !this.native) {
       const current = this.items.find(i => i.id === this.current);
       if (!current || current.videoId !== media.videoId) {

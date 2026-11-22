@@ -38,7 +38,8 @@
  system.addEventListener('change',apply);reduceGlass.addEventListener('change',apply);controls();list();apply();
  const popover=document.getElementById('appearance-popover');
  function snapshot(){if(!popover.matches(':popover-open'))return;window.jam.appearanceSnapshot({html:popover.innerHTML,theme:root.dataset.theme,glass:root.dataset.translucent,controls:[...popover.querySelectorAll('input,select,button')].filter(e=>e.id).map(e=>({id:e.id,value:e.value,checked:e.checked,disabled:e.disabled}))}).catch(()=>{});}
- popover.addEventListener('toggle',async event=>{try{const response=await window.jam.appearance(event.newState==='open');root.classList.toggle('catalog-appearance',!!response.value?.overlay);snapshot();}catch{}});
+ async function syncAppearanceSurface(){try{const response=await window.jam.appearance(popover.matches(':popover-open'));root.classList.toggle('catalog-appearance',!!response.value?.overlay);snapshot();}catch{}}
+ popover.addEventListener('toggle',syncAppearanceSurface);window.addEventListener('appearance-surface-change',()=>{if(popover.matches(':popover-open'))syncAppearanceSurface();});
  for(const type of ['input','change','click'])popover.addEventListener(type,()=>setTimeout(snapshot,100));
  window.jam.onAppearanceControl(value=>{if(value.id==='__close'){popover.hidePopover();return;}const target=[...popover.querySelectorAll('[id]')].find(e=>e.id===value.id);if(!target||target.disabled)return;if(value.type==='click')target.click();else{target.value=value.value;target.checked=value.checked;target.dispatchEvent(new Event(value.type,{bubbles:true}));}setTimeout(snapshot,100);});
  window.jam.frame().then(result=>{if(result.ok)root.classList.toggle('unified-frame',result.value.overlay);}).catch(()=>{});

@@ -1,6 +1,16 @@
 'use strict';
-function script(action){
- if(!['like','dislike','menu'].includes(action))throw Error('Unknown feedback action');
- return `(()=>{const action=${JSON.stringify(action)},bar=document.querySelector('ytmusic-player-bar');if(!bar)return {available:false};const root=action==='menu'?bar.querySelector('ytmusic-menu-renderer'):bar.querySelector('ytmusic-like-button-renderer');const selector=action==='menu'?'button,tp-yt-paper-icon-button':action==='like'?'#like-button button,#like-button':'#dislike-button button,#dislike-button';const label=action==='like'?/^(like( this video.*)?|\\u041d\\u0440\\u0430\\u0432\\u0438\\u0442\\u0441\\u044f)$/i:/^(dislike( this video.*)?|\\u041d\\u0435 \\u043d\\u0440\\u0430\\u0432\\u0438\\u0442\\u0441\\u044f)$/i;const button=root?.querySelector(selector)|| (action!=='menu'?[...bar.querySelectorAll('button[aria-label]')].find(e=>label.test(e.getAttribute('aria-label')||'')):null);if(!button||button.disabled||button.getAttribute('aria-disabled')==='true')return {available:false};button.click();return {available:true};})()`;
+function nativeFeedback(action,perform){
+ const music=document.querySelector('ytmusic-player-bar'),bar=music||(document.querySelector('video')&&document.querySelector('ytlr-player,ytlr-player-container-renderer,ytlr-app'));
+ if(!bar)return {available:false,pressed:false};
+ const root=music?(action==='menu'?bar.querySelector('ytmusic-menu-renderer'):bar.querySelector('ytmusic-like-button-renderer')):null;
+ const selector=action==='menu'?'button,tp-yt-paper-icon-button':action==='like'?'#like-button button,#like-button':'#dislike-button button,#dislike-button';
+ const label=action==='like'?/^(?:unlike|like)(?: this (?:video|song).*)?$|^Нравится(?:\s.*)?$/i:/^(?:undo )?dislike(?: this (?:video|song).*)?$|^Не нравится(?:\s.*)?$/i;
+ const candidates=[...(bar.querySelectorAll?.('button[aria-label],ytlr-button[aria-label],ytlr-toggle-button[aria-label],[role="button"][aria-label]')||[])];
+ const button=root?.querySelector(selector)||(action!=='menu'?candidates.find(e=>label.test(e.getAttribute('aria-label')||'')||e.data?.icon?.iconType===(action==='like'?'LIKE':'DISLIKE')):null);
+ if(!button||button.disabled||button.getAttribute('aria-disabled')==='true')return {available:false,pressed:false};
+ if(perform)button.click();
+ return {available:true,pressed:button.getAttribute('aria-pressed')==='true'||button.closest?.('[aria-pressed]')?.getAttribute('aria-pressed')==='true'||button.data?.isToggled===true};
 }
-module.exports={script};
+function script(action,perform=true){if(!['like','dislike','menu'].includes(action))throw Error('Unknown feedback action');return '('+nativeFeedback.toString()+')('+JSON.stringify(action)+','+!!perform+')';}
+const stateScript=()=>`(()=>{return {videoId:document.querySelector('.html5-video-player,#movie_player')?.getVideoData?.()?.video_id||'',like:${script('like',false)},dislike:${script('dislike',false)}};})()`;
+module.exports={script,stateScript};

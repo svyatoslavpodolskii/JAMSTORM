@@ -1,3 +1,18 @@
+## 0.7.8 — ambient и управление (2026-11-22)
+
+Проверки выполняются только скрыто, без звука и без фокуса. Пользователь смотрит фильмы на другом экране. Не запускать установленное приложение и не использовать CUA. Установщик запускать тихо БЕЗ /UPDATE, сохранить identity/policy/mode/addons. Android-патч не трогать.
+
+Ambient: адаптирован настоящий ProjectorShadow из WesselKroos/youtube-ambilight, MIT, revision 2207e621d8dee43b6b91ea822111849ba00e72e3. Полная лицензия assets/licenses/YouTube-Ambilight-MIT.txt включена в notices. 25 концентрических проекций кадра, геометрическая маска, blur32. Canvas и video имеют одного родителя, иначе YouTube stacking contexts перекрывали foreground. src/video-bars.js распознаёт только симметричные чёрные поля, после 4 стабильных кадров. Тёмная сцена/односторонняя тень не обрезаются. При невозможности читать кадр анализ полей отключается. Последний реальный скрытый кадр: artifacts/video-live-review/projector-21x9.png.
+
+AccountFlow: единая кнопка запускает Music (если нужен) и затем TV. Уже подключённый Music не открывает Chrome повторно. TV всё ещё требует ручного подтверждения кода Google; не утверждать автоматический перенос авторизации. Успешный статус TV после ручного подтверждения ещё нужно проверить. Никаких автоматических действий с аккаунтом пользователя в тестах.
+
+Нативные оценки читаются без клика, aria-pressed сохраняется при обновлениях очереди. Гостевой Jam не управляет локальным скрытым видео/лайками/спектром. hasVideo — локальная метаинформация, протокол Android не меняется. Аудиотреки показывают обложку, предпочтение видео сохраняется. reset очищает lastMedia.
+
+Вид отображается поверх нативного видео и каталога через appearanceView; захват root+пересечение native bounds объединяется внутри приложения, с поправкой DPI. Проверены открытие/закрытие над видео без сдвига геометрии. В background-review native child capture иногда UnknownVizError; не считать это подтверждением качества реального compositor screenshot.
+
+Проверки 0.7.8: npm check; unit 67 pass / 1 skip (Java); UI 39 screenshots / 56 sizes/states; generated video 4 aspect ratios, black frame, native restoration; silent native video scene + centered lyrics/side queue/appearance overlay; catalog menu bounds and hit-test + blur32. Native popup теряет фокус в hidden window, геометрический тест открывает dropdown noAnimations/refit, не подтверждает поведение реального клика на видимом desktop. TV размеры проверены через CDP emulation, не через показ окна.
+
+Дальше: проверить смену Music/TV без старого artwork, состояние TV после реального входа, TV Back crash, плавность прогресса/текста/пластинки и весь пользовательский backlog. Задача активна, пользователь просит периодические релизы и продолжение до лимитов. Не отмечать завершённой лишь после одной сборки.
 # Продолжение · 0.7.7
 
 Новые ограничения пользователя: не забирать экран/курсор/фокус, не включать звук; фильмы на другом мониторе. ВСЕ живые прогоны запускать только с --background-review вместе с --catalog-review/--tv-review. Окна hidden+nonfocusable, Chromium mute-audio и WebContents.setAudioMuted(true). Исправлены старые window.restore/focus/show в live smoke: теперь guarded. Первый прогон обнаружил этот старый restore, пользователь уведомлён. Не запускать CUA/активацию/обычный visible live smoke. Не запускать автоматически установленный EXE при обновлении; если он закрыт — silent install без /UPDATE.

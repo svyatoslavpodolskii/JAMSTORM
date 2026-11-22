@@ -22,7 +22,7 @@ if(selfContained&&!smoke){
   const data=path.join(installDirectory,'data');fs.mkdirSync(data,{recursive:true});
   for(const [name,folder] of [['userData',data],['sessionData',path.join(data,'session')],['crashDumps',path.join(data,'crashes')],['logs',path.join(data,'logs')],['temp',path.join(data,'temp')]]){fs.mkdirSync(folder,{recursive:true});app.setPath(name,folder);}
 }
-if (smoke){app.setPath('userData',path.join(app.getPath('temp'),'jam-desktop-smoke'));for(const name of ['logs','crashDumps']){const folder=path.join(app.getPath('userData'),name);fs.mkdirSync(folder,{recursive:true});app.setPath(name,folder);}}
+if (smoke){app.setPath('userData',backgroundReview?path.join(app.isPackaged?app.getPath('temp'):path.join(__dirname,'../artifacts'),'background-review-'+process.pid):path.join(app.getPath('temp'),'jam-desktop-smoke'));for(const name of ['logs','crashDumps']){const folder=path.join(app.getPath('userData'),name);fs.mkdirSync(folder,{recursive:true});app.setPath(name,folder);}}
 if (smoke && !liveSmoke||process.argv.includes('--catalog-review')) app.disableHardwareAcceleration();
 require('electron').crashReporter.start({uploadToServer:false});
 let policy,appearanceView,videoSettings=require('./video-view.cjs').normalize(),videoBounds=null,videoSceneKey='',videoCssReady=false;
@@ -39,12 +39,12 @@ function layout() {
   if(!window||!music)return;
   const [width,height]=window.getContentSize(),full=window.isFullScreen(),tv=mode==='tv'&&selectedTab==='music',top=full?60:72,inset=0;
   music.setBounds({x:inset,y:top,width:Math.max(300,width-inset*2),height:Math.max(0,height-top-inset)});
-  if(appearanceView){appearanceView.setBounds({x:Math.max(0,width-350),y:top+8,width:334,height:Math.max(100,height-top-24)});appearanceView.setVisible(appearanceOpen&&selectedTab==='catalog');}
-  const videoVisible=selectedTab==='music'&&videoSettings.enabled&&videoCssReady&&!!videoBounds;
+  const videoVisible=selectedTab==='music'&&jam?.state.role!=='guest'&&videoSettings.enabled&&videoCssReady&&!!videoBounds;
+  if(appearanceView){appearanceView.setBounds({x:Math.max(0,width-350),y:top+8,width:334,height:Math.max(100,height-top-24)});appearanceView.setVisible(appearanceOpen&&(selectedTab==='catalog'||videoVisible));}
   if(videoVisible){const rect=require('./video-view.cjs').bounds(videoBounds,width,height,top);if(rect)music.setBounds(rect);}
   music.setVisible(selectedTab==='catalog'||videoVisible);
   const key=JSON.stringify({active:videoVisible,ambient:videoSettings.ambient,intensity:videoSettings.intensity,size:videoSettings.size,ultrawide:width/height>2.1});
-  if(key!==videoSceneKey&&/^https:\/\/(music.youtube.com|www.youtube.com\/tv)/.test(music.webContents.getURL())){videoSceneKey=key;music.webContents.executeJavaScript(fs.readFileSync(path.join(__dirname,'video-scene.js'),'utf8')+';window.__jamVideoScene.set('+key+');').catch(()=>{videoSceneKey='';});}
+  if(key!==videoSceneKey&&/^https:\/\/(music.youtube.com|www.youtube.com\/tv)/.test(music.webContents.getURL())){videoSceneKey=key;music.webContents.executeJavaScript(fs.readFileSync(path.join(__dirname,'ambient-shadow.js'),'utf8')+';'+fs.readFileSync(path.join(__dirname,'video-bars.js'),'utf8')+';'+fs.readFileSync(path.join(__dirname,'video-scene.js'),'utf8')+';window.__jamVideoScene.set('+key+');').catch(()=>{videoSceneKey='';});}
 }
 function finishSmoke(code){
 
@@ -128,7 +128,7 @@ app.whenReady().then(async () => {
   for (const event of ['will-navigate', 'will-redirect']) music.webContents.on(event, (e, url) => { if (!remoteAllowed(url)) e.preventDefault(); });
   music.webContents.setWindowOpenHandler(({url}) => {
     // Login links may request a new window; preserve the isolated session.
-    if(!smoke&&new URL(url).hostname==='accounts.google.com'){setImmediate(()=>browserLogin.start().catch(error=>send('app:login-state',error.message)));return {action:'deny'};}
+    if(!smoke&&new URL(url).hostname==='accounts.google.com'){setImmediate(()=>loginFlow.start('all').catch(error=>send('app:login-state',error.message)));return {action:'deny'};}
     if(remoteAllowed(url)) setImmediate(()=>music.webContents.loadURL(url).catch(error=>send('player:state',{phase:'error',message:error.message})));
     return {action:'deny'};
   });
@@ -155,6 +155,7 @@ app.whenReady().then(async () => {
   jam.on('state', state => {
     if (state.role !== 'host') { tunnel.stop(); room.stop(); }
     if (!music.webContents.isDestroyed()) music.webContents.setAudioMuted(backgroundReview||state.role === 'guest');
+    if(state.role==='guest'){send('app:spectrum',Array(48).fill(0));send('app:level',0);}layout();
     send('jam:state', state);
   });
   const log=(kind,details={})=>{try{const dir=app.getPath('logs');fs.mkdirSync(dir,{recursive:true});const file=path.join(dir,'runtime.log');if(fs.existsSync(file)&&fs.statSync(file).size>1000000)fs.renameSync(file,path.join(dir,'runtime.previous.log'));fs.appendFileSync(file,JSON.stringify({time:new Date().toISOString(),version:app.getVersion(),kind,mode,...details})+'\n');}catch{}};
@@ -167,12 +168,14 @@ app.whenReady().then(async () => {
   handle('app:accounts',refresh=>refresh===false?accounts.view():accounts.refresh());
   handle('app:video',value=>{if(value!==undefined){if(!value||typeof value!=='object')throw Error('Invalid video preference');videoSettings=require('./video-view.cjs').normalize({...videoSettings,...value});if(!smoke)fs.writeFileSync(videoFile,JSON.stringify(videoSettings));videoSceneKey='';layout();send('app:video',videoSettings);}return videoSettings;});
   handle('app:video-layout',value=>{videoBounds=value?.active===true?require('./video-view.cjs').bounds(value.bounds,...window.getContentSize(),window.isFullScreen()?60:72):null;layout();return {visible:!!videoBounds&&videoSettings.enabled};});
-  music.webContents.on('media-started-playing',()=>{if(selectedTab==='catalog'&&videoSettings.enabled&&videoSettings.followCatalog){selectedTab='music';layout();send('app:tab-changed','music');}});
-  handle('app:feedback',async action=>{const script=require('./feedback.cjs').script(action);if(mode!=='music')throw Error('Открой меню трека в YouTube TV');if(action==='menu'){selectedTab='catalog';layout();music.webContents.focus();}const result=await music.webContents.executeJavaScript(script);if(!result.available)throw Error('Действие пока недоступно для этого трека');return {page:action==='menu'?'catalog':null};});
+  music.webContents.on('media-started-playing',()=>{if(jam.state.role!=='guest'&&selectedTab==='catalog'&&videoSettings.enabled&&videoSettings.followCatalog){selectedTab='music';layout();send('app:tab-changed','music');}});
+  handle('app:feedback',async action=>{const feedback=require('./feedback.cjs'),script=feedback.script(action);if(jam.state.role==='guest')throw Error('Оцени трек на устройстве воспроизведения');if(mode!=='music'&&action==='menu'){selectedTab='catalog';layout();send('app:tab-changed','catalog');return {page:'catalog'};}
+   if(action!=='menu'){await accounts.refresh(mode==='music'?'music':'tv');if(accounts.view()[mode==='music'?'music':'tv']!=='signed-in')return {page:'settings',message:'Для оценки песни подключи аккаунт Google.'};}
+   if(action==='menu'){selectedTab='catalog';layout();music.webContents.focus();}const result=await music.webContents.executeJavaScript(script);if(!result.available)throw Error('Действие пока недоступно для этого трека');const value=await music.webContents.executeJavaScript(feedback.stateScript());return {page:action==='menu'?'catalog':null,feedback:value};});
   handle('app:frame',()=>({overlay:process.platform==='win32'}));
   handle('app:presentation',async value=>{if(!value||!['dark','light'].includes(value.theme)||typeof value.glass!=='boolean'||!Number.isFinite(value.opacity))throw Error('Invalid presentation');const theme=require('electron').nativeTheme,source=value.system===true?'system':value.theme;if(theme.themeSource!==source)theme.themeSource=source;presentation=require('./presentation.cjs').normalize(value);await applyPresentation();return presentation;});
   handle('app:window',action=>{if(action==='fullscreen-exit'){music.webContents.executeJavaScript('document.exitFullscreen?.().catch(()=>{})').catch(()=>{});window.setFullScreen(false);}else if(action==='minimize')window.minimize();else if(action==='maximize'){if(window.isMaximized())window.unmaximize();else window.maximize();}else if(action==='close')window.close();else throw Error('Invalid window action');return {maximized:window&&!window.isDestroyed()?window.isMaximized():false};});
-  handle('app:appearance',async open=>{if(typeof open!=='boolean')throw Error('Invalid appearance state');appearanceOpen=open;if(open&&selectedTab==='catalog'&&!appearanceView){appearanceView=new WebContentsView({webPreferences:{preload:path.join(__dirname,'appearance-panel-preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});appearanceView.setBackgroundColor('#00000000');window.contentView.addChildView(appearanceView);await appearanceView.webContents.loadFile(path.join(__dirname,'ui/appearance-panel.html'));}layout();return {overlay:open&&selectedTab==='catalog'};});
+  handle('app:appearance',async open=>{if(typeof open!=='boolean')throw Error('Invalid appearance state');appearanceOpen=open;if(open&&music.getVisible()&&!appearanceView){appearanceView=new WebContentsView({webPreferences:{preload:path.join(__dirname,'appearance-panel-preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});appearanceView.setBackgroundColor('#00000000');window.contentView.addChildView(appearanceView);await appearanceView.webContents.loadFile(path.join(__dirname,'ui/appearance-panel.html'));}layout();return {overlay:open&&music.getVisible()};});
   handle('app:appearance-snapshot',value=>{if(appearanceOpen&&appearanceView&&!appearanceView.webContents.isDestroyed())appearanceView.webContents.send('appearance:snapshot',value);});
   ipcMain.on('appearance:event',(event,value)=>{if(!appearanceView||event.sender!==appearanceView.webContents||event.senderFrame!==event.sender.mainFrame||!require('./local-page.cjs').localPageGuard(path.join(__dirname,'ui/appearance-panel.html'))(event.senderFrame.url))return;if(!value||typeof value.id!=='string'||value.id.length>80||!['input','change','click'].includes(value.type)||typeof(value.value||'')!=='string'||(value.value||'').length>200)return;send('app:appearance-control',value);});
   handle('app:update',async install=>{
@@ -203,7 +206,7 @@ app.whenReady().then(async () => {
   function controlledCommand(command,context={}){if(['SNAPSHOT','SYNC'].includes(command.op))return player.call(command);return policy.run(command,context.actor,cmd=>player.call(cmd),()=>player.call({op:'SNAPSHOT'}),id=>player.native.metadata(id));}
   handle('app:policy',value=>{if(value){policy.set(value);music.webContents.send('filter:enabled',{block:policy.settings.blockExplicit,hide:policy.settings.hideExplicit});}return policy.settings;});
   handle('jam:state', () => jam.view());
-  handle('app:queue',async()=>{const value=jam.state.role==='guest'?jam.state.queue:await player.call({op:'SNAPSHOT'});layout();return value;});
+  handle('app:queue',async()=>{const guest=jam.state.role==='guest',value=guest?jam.state.queue:await player.call({op:'SNAPSHOT'});layout();if(!value)return value;let feedback=null;if(!guest)try{feedback=await music.webContents.executeJavaScript(require('./feedback.cjs').stateScript());}catch{}return {...value,feedback,videoAvailable:!guest&&player.lastMedia?.videoId===value.clock?.videoId&&player.lastMedia?.hasVideo===true};});
   handle('app:lyrics',track=>lyrics.get(track));
   handle('app:search',async query=>(await require('./search.cjs').searchYouTube(query)).filter(i=>!policy.settings.blockExplicit||!policy.settings.hideExplicit||!i.explicit));
   handle('app:play-track',async id=>{
@@ -228,10 +231,12 @@ app.whenReady().then(async () => {
   handle('app:visuals',enabled=>{if(typeof enabled!=='boolean')throw new Error('Invalid visual setting');visualsEnabled=enabled;music.webContents.send('visual:enabled',enabled);return enabled;});
   let lastSpectrum=0;
   ipcMain.on('player:spectrum',(event,value)=>{
+    if(jam.state.role==='guest')return;
     if(event.sender!==music.webContents||event.senderFrame!==music.webContents.mainFrame||performance.now()-lastSpectrum<120||!Array.isArray(value)||value.length!==48||value.some(n=>typeof n!=='number'||!Number.isFinite(n)||n<0||n>1))return;
     lastSpectrum=performance.now();send('app:spectrum',value);
   });
   ipcMain.on('player:level',(event,value)=>{
+    if(jam.state.role==='guest')return;
     if(event.sender!==music.webContents||event.senderFrame!==music.webContents.mainFrame||typeof value!=='number'||!Number.isFinite(value)||value<0||value>1||performance.now()-lastLevelAt<120)return;
     lastAudioLevel=Math.max(lastAudioLevel,value);lastLevelAt=performance.now();send('app:level',value);
   });
@@ -266,10 +271,12 @@ app.whenReady().then(async () => {
   handle('room:local', () => { tunnel.stop(); return roomView(); });
   handle('room:copy', () => { if (!room.url) throw new Error('Открой комнату'); clipboard.writeText(roomView().publicUrl || room.url); });
   handle('room:qr', () => { if (!room.url) throw new Error('Открой комнату'); return QRCode.toDataURL(roomView().publicUrl || room.url, { margin: 3, width: 256 }); });
-  const browserLogin=new (require('./browser-login.cjs').BrowserLogin)(path.join(app.getPath('userData'),'login-browser-human'),musicSession,async()=>{const previous=mode;await applyMode('music');await music.webContents.loadURL('https://music.youtube.com/');const connected=await music.webContents.executeJavaScript(`new Promise(resolve=>{let attempts=0;const check=()=>{if(window.ytcfg?.get('LOGGED_IN')===true)return resolve(true);if(++attempts>40)return resolve(false);setTimeout(check,200);};check();})`);if(previous==='tv'){await applyMode('tv');await music.webContents.loadURL(home());}if(!connected)throw Error('YouTube did not confirm login');accounts.set('music',true);musicMetadata.close();selectedTab='catalog';layout();send('app:mode',mode);},text=>send('app:login-state',text));
+  let loginFlow;const openTVAccount=async()=>{await prepareNavigation();if(mode!=='tv'){await applyMode('tv');if(!smoke)fs.writeFileSync(modeFile,JSON.stringify({mode:'tv'}));}selectedTab='catalog';layout();send('app:mode','tv');if(!music.webContents.getURL().startsWith('https://www.youtube.com/tv'))await music.webContents.loadURL(home());await accounts.refresh('tv');if(accounts.view().tv!=='signed-in'){const opened=await music.webContents.executeJavaScript(accountScripts.tvLoginScript);if(!opened)throw Error('TV sign-in is not ready');}send('app:tab-changed','catalog');return {mode:'tv',page:'catalog'};};
+  const browserLogin=new (require('./browser-login.cjs').BrowserLogin)(path.join(app.getPath('userData'),'login-browser-human'),musicSession,async()=>{const previous=mode;await applyMode('music');await music.webContents.loadURL('https://music.youtube.com/');const connected=await music.webContents.executeJavaScript(`new Promise(resolve=>{let attempts=0;const check=()=>{if(window.ytcfg?.get('LOGGED_IN')===true)return resolve(true);if(++attempts>40)return resolve(false);setTimeout(check,200);};check();})`);if(previous==='tv'&&!loginFlow?.pendingTV){await applyMode('tv');await music.webContents.loadURL(home());}if(!connected)throw Error('YouTube did not confirm login');accounts.set('music',true);musicMetadata.close();if(loginFlow?.pendingTV)try{await loginFlow.musicConnected();}catch{loginFlow.lastStep='tv-unavailable';}selectedTab='catalog';layout();send('app:mode',mode);},text=>{if(!browserLogin.active)loginFlow?.cancelMusic();send('app:login-state',text.startsWith('\u0412\u0445\u043e\u0434 \u0437\u0430\u0432\u0435\u0440\u0448\u0451\u043d')&&loginFlow?.lastStep.startsWith('tv')?'Music \u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0451\u043d. \u0417\u0430\u0432\u0435\u0440\u0448\u0438 \u0432\u0445\u043e\u0434 \u0432 TV \u043f\u043e \u043a\u043e\u0434\u0443.':text);});
   app.once('before-quit',()=>{if(browserLogin.active){browserLogin.command('Browser.close').catch(()=>{});browserLogin.stop();}});
-  handle('app:login', async(target='music')=>{if(!['music','tv'].includes(target))throw Error('Unknown account');if(target==='tv'){await prepareNavigation();if(mode!=='tv'){await applyMode('tv');if(!smoke)fs.writeFileSync(modeFile,JSON.stringify({mode:'tv'}));}selectedTab='catalog';layout();send('app:mode','tv');if(!music.webContents.getURL().startsWith('https://www.youtube.com/tv'))await music.webContents.loadURL(home());await accounts.refresh('tv');if(accounts.view().tv!=='signed-in'){const opened=await music.webContents.executeJavaScript(accountScripts.tvLoginScript);if(!opened)throw Error('TV sign-in is not ready');}return {mode:'tv',page:'catalog'};}if(smoke){selectedTab='catalog';layout();await music.webContents.loadURL('https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F');return;}return browserLogin.start();});
-  for(const event of ['will-navigate','will-redirect'])music.webContents.on(event,(e,url)=>{if(!smoke&&new URL(url).hostname==='accounts.google.com'){e.preventDefault();browserLogin.start().catch(error=>send('app:login-state',error.message));}});
+  loginFlow=new (require('./account-flow.cjs').AccountFlow)({status:()=>accounts.refresh(),tv:openTVAccount,music:async()=>{if(smoke){selectedTab='catalog';layout();await music.webContents.loadURL('https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F');return;}return browserLogin.start();}});
+  handle('app:login',target=>loginFlow.start(target));
+  for(const event of ['will-navigate','will-redirect'])music.webContents.on(event,(e,url)=>{if(!smoke&&new URL(url).hostname==='accounts.google.com'){e.preventDefault();loginFlow.start('all').catch(error=>send('app:login-state',error.message));}});
   handle('app:retry', async () => { selectedTab = 'music'; layout(); send('app:mode',mode);await music.webContents.loadURL(home()); });
   ipcMain.on('player:cast',event=>{if(event.sender!==music.webContents||event.senderFrame!==music.webContents.mainFrame)return;selectedTab='settings';layout();send('app:cast',{});window.webContents.focus();});
   handle('app:open-browser',async()=>{const sample=await player.sample();const url='https://music.youtube.com'+(sample?.videoId&&/^[\w-]{11}$/.test(sample.videoId)?'/watch?v='+sample.videoId:'');await require('electron').shell.openExternal(url);});
@@ -279,7 +286,7 @@ app.whenReady().then(async () => {
     if (!player.native&&event.sender === music.webContents && event.senderFrame === music.webContents.mainFrame && jam.state.role === 'host') jam.command('SKIP_NEXT').catch(() => {});
   });
   const ambientTimer=setInterval(async()=>{
-    const item=player.items.find(entry=>entry.id===player.current)||(mode==='tv'?await player.sample():null);
+    const guest=jam.state.role==='guest',remote=jam.state.queue;const item=guest?(remote?.items?.find(entry=>entry.current)||remote?.nowPlaying):player.items.find(entry=>entry.id===player.current)||(mode==='tv'?await player.sample():null);
     if(!item||item.videoId===ambientTrack||ambientBusy||!window||window.isDestroyed())return;
     ambientBusy=true;const videoId=item.videoId;
     try{
@@ -287,13 +294,13 @@ app.whenReady().then(async () => {
       if(!response.ok||Number(response.headers.get('content-length')||0)>1000000)return;
       const data=await response.arrayBuffer();if(data.byteLength>1000000)return;
       const picture=require('electron').nativeImage.createFromBuffer(Buffer.from(data)).resize({width:24,height:24});
-      if((await player.sample())?.videoId!==videoId)return;
+      const currentId=jam.state.role==='guest'?(jam.state.queue?.items?.find(entry=>entry.current)||jam.state.queue?.nowPlaying)?.videoId:(await player.sample())?.videoId;if(currentId!==videoId)return;
       const palette=require('./ambient.cjs').artworkPalette(picture.toBitmap()),color=palette[0];ambientTrack=videoId;send('app:palette',palette);
       await music.webContents.executeJavaScript(`document.documentElement.style.setProperty('--jamstorm-ambient',${JSON.stringify(color.join(' '))})`);
     }catch{}finally{ambientBusy=false;}
   },2500);
   const accountTimer=setInterval(()=>{if(mode==='tv')accounts.refresh('tv').catch(()=>{});},10000);
-  let appearanceCapturing=false;const appearanceTimer=setInterval(async()=>{if(appearanceCapturing||!appearanceOpen||selectedTab!=='catalog'||!appearanceView||appearanceView.webContents.isDestroyed()||music.webContents.isDestroyed())return;appearanceCapturing=true;try{const rect=appearanceView.getBounds(),base=music.getBounds();const image=await music.webContents.capturePage({x:Math.max(0,rect.x-base.x),y:Math.max(0,rect.y-base.y),width:rect.width,height:Math.min(rect.height,base.height-8)},{stayHidden:true});if(appearanceView&&!appearanceView.webContents.isDestroyed())appearanceView.webContents.send('appearance:backdrop',image.toDataURL());}catch{}finally{appearanceCapturing=false;}},180);
+  let appearanceCapturing=false;const appearanceTimer=setInterval(async()=>{if(appearanceCapturing||!appearanceOpen||!music.getVisible()||!appearanceView||appearanceView.webContents.isDestroyed()||music.webContents.isDestroyed())return;appearanceCapturing=true;try{const rect=appearanceView.getBounds(),base=music.getBounds(),background=await window.webContents.capturePage(rect,{stayHidden:true}),x=Math.max(rect.x,base.x),y=Math.max(rect.y,base.y),width=Math.max(0,Math.min(rect.x+rect.width,base.x+base.width)-x),height=Math.max(0,Math.min(rect.y+rect.height,base.y+base.height)-y),value={base:background.toDataURL(),viewWidth:rect.width,viewHeight:rect.height};if(width&&height){const image=await music.webContents.capturePage({x:x-base.x,y:y-base.y,width,height},{stayHidden:true});Object.assign(value,{overlay:image.toDataURL(),x:x-rect.x,y:y-rect.y,width,height});}if(appearanceView&&!appearanceView.webContents.isDestroyed())appearanceView.webContents.send('appearance:backdrop',value);}catch{}finally{appearanceCapturing=false;}},230);
   window.on('closed',()=>{if(appearanceView&&!appearanceView.webContents.isDestroyed())appearanceView.webContents.close({waitForBeforeUnload:false});clearInterval(appearanceTimer);clearInterval(accountTimer);clearInterval(ambientTimer);musicMetadata.close();recovery.close();});
   window.on('resize', layout); window.on('closed', () => { tunnel.stop(); room.stop(); jam.disconnect(); if(!music.webContents.isDestroyed())music.webContents.close({waitForBeforeUnload:false}); window = null; });
   await window.loadFile(path.join(__dirname, 'ui/index.html')); layout();send('app:mode',mode);

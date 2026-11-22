@@ -61,3 +61,5 @@ Jam-Layer by JamQueueSharing: https://github.com/JamQueueSharing/Jam-Layer . The
 VacuumTube by shy1132 provided the compatibility reference for the Cobalt TV user agent and background playback approach: https://github.com/shy1132/VacuumTube . Its MIT notice is included in assets/licenses/VacuumTube-MIT.txt. JAMSTORM includes adapted Cobalt compatibility hooks under that MIT license; the complete VacuumTube app is not bundled.
 
 YouTube and YouTube Music are trademarks of Google LLC. Their site code, logos, music, APKs and video files are not included in this repository. JAMSTORM is unofficial and is not endorsed by Google, Cloudflare, SponsorBlock, ReVanced, or Jam-Layer.
+
+Ambient light for YouTube by Wessel Kroos: https://github.com/WesselKroos/youtube-ambilight . The adapted ProjectorShadow module in src/ambient-shadow.js is redistributed under the MIT License, Copyright (c) 2017 Wessel Kroos. Full license: assets/licenses/YouTube-Ambilight-MIT.txt. Source revision: 2207e621d8dee43b6b91ea822111849ba00e72e3. The complete browser extension is not bundled.

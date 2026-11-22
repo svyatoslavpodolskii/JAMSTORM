@@ -3,6 +3,11 @@ const assert = require('node:assert/strict');
 const { JamPlayer } = require('../src/player.cjs');
 const vm=require('node:vm');
 const make = () => { const p = new JamPlayer({}); p.sample = async () => ({ videoId: 'abcdefghijk', title: 'Первый', artist: 'Исполнитель', playing: true, position: 10, duration: 1000 }); return p; };
+test('media availability follows the current sample and clears on reset',async()=>{
+ const p=make();await p.snapshot();assert.equal(p.lastMedia.videoId,'abcdefghijk');
+ p.sample=async()=>null;await p.snapshot();assert.equal(p.lastMedia,null);
+ p.lastMedia={videoId:'old',hasVideo:true};p.reset();assert.equal(p.lastMedia,null);
+});
 test('transport updates the native player and retries a transient media source replacement',async()=>{
  let starts=0,attempts=0,pauses=0;
  const native={getVideoData:()=>({video_id:'abcdefghijk'}),classList:{contains:()=>false},playVideo(){starts++;},pauseVideo(){pauses++;}};

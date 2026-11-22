@@ -7,6 +7,13 @@ test('feedback delegates to native controls and rejects arbitrary actions',()=>{
  assert.equal(clicks,3);assert.throws(()=>script('arbitrary'));
  assert.equal(vm.runInNewContext(script('like'),{document:{querySelector:()=>null}}).available,false);
 });
+test('reading native rating state never clicks and TV Like is separate from Dislike',()=>{
+ const {script,stateScript}=require('../src/feedback.cjs');let clicks=0;
+ const make=label=>({data:{},getAttribute:key=>key==='aria-label'?label:key==='aria-pressed'?String(label==='Нравится'):null,click(){clicks++;}}),buttons=[make('Не нравится'),make('Нравится')],root={querySelectorAll:()=>buttons};
+ const document={querySelector:selector=>selector==='ytmusic-player-bar'?null:selector==='video'?{}:selector.startsWith('ytlr-player')?root:null};
+ const like=vm.runInNewContext(script('like',false),{document}),dislike=vm.runInNewContext(script('dislike',false),{document});assert.equal(like.pressed,true);assert.equal(dislike.pressed,false);assert.equal(clicks,0);
+ vm.runInNewContext(stateScript(),{document});assert.equal(clicks,0);vm.runInNewContext(script('like'),{document});assert.equal(clicks,1);
+});
 test('Music and TV login remain independent and concurrent probes coalesce',async()=>{
  let calls=0;const accounts=new Accounts({music:async()=>{calls++;return true;},tv:async()=>false});
  await Promise.all([accounts.refresh(),accounts.refresh()]);assert.equal(calls,1);assert.deepEqual(accounts.view(),{music:'signed-in',tv:'signed-out'});
