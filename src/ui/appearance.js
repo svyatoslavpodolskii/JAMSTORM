@@ -5,7 +5,7 @@
  let saved={};try{saved=JSON.parse(localStorage.getItem('appearance')||'{}')||{};}catch{}
  let prefs=library.normalize({...saved,glass:localStorage.getItem('glass')!=='off',material:localStorage.getItem('window-material')||saved.material||'acrylic'}),custom=library.readCustom(localStorage.getItem('appearance-custom')),selected=localStorage.getItem('appearance-preset')||'custom',syncTimer;
  let editId=selected.startsWith('user:')?selected:'';
- const options={layout:['airy','large'],theme:['dark','light','system'],background:['ambient','artwork','horizon','bloom','plain'],palette:['album','mono','noir'],lyrics:['none','soft','mist','prism','particles'],visualizer:['none','trail','wave','spectrum','orbit'],dock:['always','auto']};
+ const options={layout:['airy','large'],theme:['dark','light','system'],background:['ambient','artwork','horizon','bloom','plain'],palette:['album','mono','noir'],lyrics:['none','soft','mist','prism','particles'],visualizer:['none','trail','wave','spectrum','orbit','corona','lava'],dock:['always','auto']};
  for(const [key,values] of Object.entries(options))if(!values.includes(prefs[key]))prefs[key]=defaults[key];
  for(const key of ['opacity','grain','motion'])prefs[key]=Number.isFinite(Number(prefs[key]))?Math.max(0,Math.min(100,Number(prefs[key]))):defaults[key];
  function apply(){

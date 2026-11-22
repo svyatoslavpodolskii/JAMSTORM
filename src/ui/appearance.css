@@ -179,3 +179,11 @@ body.glass[data-translucent=true] .topbar{background:linear-gradient(135deg,rgb(
 #appearance-popover::-webkit-scrollbar-track{margin-block:18px;background:transparent}
 #appearance-popover::-webkit-scrollbar-thumb{background:#ffffff30;border-radius:8px}
 body:has(#appearance-popover:popover-open) main{scrollbar-width:none}
+.video-view-active .artwork-content{visibility:hidden}
+#dock-video[aria-pressed=true]{color:var(--text);background:#ffffff14;border-radius:50%}
+body.video-view-active .immersion-canvas{display:none}
+@media(max-width:1100px){.dock-actions .stage-icon{width:28px;min-width:28px;padding:0}}
+.video-view-active .ambient-light{opacity:0!important}
+.immersion-background{z-index:0}
+.listening-stage{z-index:1}
+.listening-view[data-theme=dark] .hero-copy :is(h1,p){text-shadow:0 1px 3px #000a,0 3px 18px #0007}

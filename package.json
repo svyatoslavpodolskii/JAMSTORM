@@ -1,6 +1,6 @@
 {
   "name": "jamstorm",
-  "version": "0.7.6",
+  "version": "0.7.7",
   "private": true,
   "license": "MIT",
   "author": "JAMSTORM contributors",
@@ -17,7 +17,8 @@
     "smoke:live": "node scripts/run.cjs --live-smoke-test",
     "ui:review": "node scripts/electron-task.cjs review",
     "icons": "node scripts/electron-task.cjs icons",
-    "review:install": "node scripts/installation-review.cjs"
+    "review:install": "node scripts/installation-review.cjs",
+    "video:review": "node scripts/electron-task.cjs video"
   },
   "devDependencies": {
     "electron": "45.4.1",

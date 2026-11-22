@@ -8,11 +8,12 @@ const out=path.join(__dirname,'../artifacts/ui-review');fs.mkdirSync(out,{recurs
 let room={active:false},panels={lyrics:true,queue:true};
 let state={phase:'idle',role:null,peers:0,queue:{ok:true,native:true,revision:'review:1',items:[],clock:{position:32000,duration:180000,playing:true}}};
 const fixtures=[['5NV6Rdv1a3I','Get Lucky','Daft Punk'],['fLexgOxsZu0','Uptown Funk','Mark Ronson · Bruno Mars'],['kJQP7kiw5Fk','Despacito','Luis Fonsi · Daddy Yankee']];
-const windows=[];const errors=[];
+const windows=[];const errors=[];let screenshots=0;
 const handle=(key,fn)=>ipcMain.handle(key,async(_event,...args)=>{try{return {ok:true,value:await fn(...args)};}catch(error){return {ok:false,error:error.message};}});
 handle('unused:login-state',()=>{});
 handle('app:accounts',()=>({music:'signed-in',tv:'signed-out'}));
 handle('app:feedback',()=>({page:null}));
+let videoSettings={enabled:false,followCatalog:true,ambient:true,intensity:75,size:76};handle('app:video',value=>videoSettings={...videoSettings,...value});handle('app:video-layout',value=>({visible:!!value.active}));
 handle('app:navigation',()=>({back:true,forward:false}));handle('app:navigate',()=>({back:false,forward:true}));
 handle('app:appearance',()=>{});
 handle('app:appearance-snapshot',()=>{});
@@ -36,13 +37,23 @@ async function make(file,width,height){
 }
 async function shot(win,name){
  await new Promise(resolve=>setTimeout(resolve,300));
- for(let attempt=0;attempt<3;attempt++)try{fs.writeFileSync(path.join(out,name+'.png'),(await win.webContents.capturePage(undefined,{stayHidden:true})).toPNG());return;}catch(error){
+ for(let attempt=0;attempt<3;attempt++)try{fs.writeFileSync(path.join(out,name+'.png'),(await win.webContents.capturePage(undefined,{stayHidden:true})).toPNG());screenshots++;return;}catch(error){
   if(attempt===2||!/UnknownVizError|Current display surface not available/.test(error.message))throw Error('Screenshot '+name+': '+error.message);
   if(win.webContents.isOffscreen())win.webContents.invalidate();await new Promise(resolve=>setTimeout(resolve,200));
  }
 }
 app.whenReady().then(async()=>{
  const win=await make('index.html',1320,880);
+ if(process.argv.includes('--ambient-only')){
+  win.setSize(2560,1080);state.queue.items=[{id:'ambient',videoId:'5NV6Rdv1a3I',title:'Afterglow',artist:'JAMSTORM Sessions',current:true}];
+  await win.webContents.executeJavaScript(`document.body.classList.remove('booting','intro-running');document.getElementById('boot-screen').hidden=true;render(${JSON.stringify(state)});window.listening.panels({lyrics:'hidden',queue:'hidden'},false);document.querySelector('#appearance-preset').value='glass';document.querySelector('#appearance-preset').dispatchEvent(new Event('change'));window.playerEffects.palette([[203,93,42],[42,110,180],[153,63,160]]);`);
+  const results=[];for(const mode of ['lava','corona']){
+   await win.webContents.executeJavaScript(`document.querySelector('#appearance-visualizer').value=${JSON.stringify(mode)};document.querySelector('#appearance-visualizer').dispatchEvent(new Event('input'))`);
+   for(let i=0;i<24;i++){win.webContents.send('app:spectrum',Array.from({length:48},(_,n)=>.15+Math.sin(n/5+i/6)**2*.7));await new Promise(r=>setTimeout(r,80));}
+   const pixels=await win.webContents.executeJavaScript(`(()=>{const c=document.querySelector('.immersion-background'),data=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let count=0,total=0;for(let i=3;i<data.length;i+=64){total++;if(data[i]>10)count++;}return {mode:document.body.dataset.visualizer,coverage:count/total,width:c.width,height:c.height};})()`);results.push(pixels);if(pixels.coverage<.25)throw Error('Ambient does not fill the screen: '+JSON.stringify(pixels));await shot(win,mode+'-full-ambient');
+  }
+  console.log('AMBIENT_REVIEW_OK',JSON.stringify(results));app.exit(0);return;
+ }
  await win.webContents.executeJavaScript(`document.querySelector('#appearance-dock').value='always';document.querySelector('#appearance-dock').dispatchEvent(new Event('input'))`);
  await new Promise(resolve=>setTimeout(resolve,120));
  const bootMotion=await win.webContents.executeJavaScript(`document.getAnimations().filter(a=>a.playState==='running').map(a=>a.animationName||'')`);
@@ -91,7 +102,7 @@ app.whenReady().then(async()=>{
 
  // Reproduce the reported short-window clipping, including the first-use empty state.
  const geometryFailures=[];let cases=0;
- for(const [width,height] of [[1163,774],[1163,700],[860,620],[1320,620],[960,650]]){
+ for(const [width,height] of [[1163,774],[1163,700],[860,620],[1320,620],[960,650],[2560,1080],[3440,1440]]){
   win.setSize(width,height);
   for(const empty of [true,false]){
    const data=empty?{...state,queue:{...state.queue,items:[]}}:state;
@@ -192,7 +203,8 @@ app.whenReady().then(async()=>{
  await win.webContents.executeJavaScript(`window.listening.mode('tv');window.listening.render({...${JSON.stringify(state.queue)},items:[{id:'tv-fixture',videoId:'5NV6Rdv1a3I',title:'TV review',artist:'JAMSTORM Sessions',current:true}]});window.listening.panels({lyrics:'center',queue:'hidden'},false)`);
  await new Promise(resolve=>setTimeout(resolve,150));
  const tvLyrics=await win.webContents.executeJavaScript(`({lines:document.querySelectorAll('.lyric-line').length,disabled:document.querySelector('#overlay-lyrics').disabled})`);if(tvLyrics.lines!==14||tvLyrics.disabled)throw Error('TV lyrics are unavailable '+JSON.stringify(tvLyrics));
- if(errors.length)throw new Error(errors.join('\n'));
- console.log('UI_REVIEW_OK',JSON.stringify({screenshots:38,resizeCases:cases,toolbar:header,lyrics:lyricState,motion,bootMotion}));
+ win.setSize(2560,1080);await win.webContents.executeJavaScript(`window.listening.mode('music');window.listening.panels({lyrics:'hidden',queue:'hidden'},false);document.querySelector('#appearance-visualizer').value='corona';document.querySelector('#appearance-visualizer').dispatchEvent(new Event('input'));document.body.classList.remove('playback-paused')`);win.webContents.send('app:spectrum',Array.from({length:48},(_,i)=>.15+Math.sin(i/5)**2*.65));await shot(win,'rays-ultrawide');await win.webContents.executeJavaScript(`document.querySelector('#appearance-visualizer').value='lava';document.querySelector('#appearance-visualizer').dispatchEvent(new Event('input'))`);win.webContents.send('app:spectrum',Array.from({length:48},(_,i)=>.2+Math.sin(i/6)**2*.65));await shot(win,'lava-ultrawide');
+ if(windows.some(w=>w.isVisible()||w.isFocused()))throw Error('UI review must remain hidden');if(errors.length)throw new Error(errors.join('\n'));
+ console.log('UI_REVIEW_OK',JSON.stringify({screenshots,resizeCases:cases,toolbar:header,lyrics:lyricState,motion,bootMotion}));
  app.exit(0);
 }).catch(error=>{console.error('UI_REVIEW_FAILED',error.stack);app.exit(1);});

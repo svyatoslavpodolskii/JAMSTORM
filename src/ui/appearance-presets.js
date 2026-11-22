@@ -1,7 +1,7 @@
 'use strict';
 (function(scope){
  const defaults={reactive:true,vinyl:false,paper:true,size:100,layout:'airy',theme:'dark',background:'ambient',palette:'album',motion:55,opacity:55,grain:3,lyrics:'soft',visualizer:'trail',dock:'auto',glass:true,material:'acrylic'};
- const options={layout:['airy','large'],theme:['dark','light','system'],background:['ambient','artwork','horizon','bloom','plain'],palette:['album','mono','noir'],lyrics:['none','soft','mist','prism','particles'],visualizer:['none','trail','wave','spectrum','orbit'],dock:['always','auto'],material:['acrylic','mica','none']};
+ const options={layout:['airy','large'],theme:['dark','light','system'],background:['ambient','artwork','horizon','bloom','plain'],palette:['album','mono','noir'],lyrics:['none','soft','mist','prism','particles'],visualizer:['none','trail','wave','spectrum','orbit','corona','lava'],dock:['always','auto'],material:['acrylic','mica','none']};
  function normalize(value){const result={...defaults};if(!value||typeof value!=='object')return result;for(const [key,values] of Object.entries(options))if(values.includes(value[key]))result[key]=value[key];for(const key of ['opacity','grain','motion'])if(Number.isFinite(Number(value[key])))result[key]=Math.max(0,Math.min(100,Number(value[key])));if(Number.isFinite(Number(value.size)))result.size=Math.max(55,Math.min(160,Number(value.size)));for(const key of ['glass','vinyl','paper','reactive'])if(typeof value[key]==='boolean')result[key]=value[key];return result;}
  const builtins=[
   {id:'glass',name:'Стекло',settings:normalize({})},

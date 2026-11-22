@@ -14,6 +14,8 @@ const QRCode = require('qrcode');
 const liveSmoke = process.argv.includes('--tv-review')||process.argv.includes('--live-smoke-test')||process.argv.includes('--catalog-review');
 const musicSmoke = process.argv.includes('--music-mode')||process.argv.includes('--catalog-review');
 const smoke = process.argv.includes('--smoke-test') || liveSmoke;
+const backgroundReview=smoke&&process.argv.includes('--background-review');
+if(backgroundReview)app.commandLine.appendSwitch('mute-audio');
 const installDirectory=path.dirname(app.getPath('exe'));
 const selfContained=app.isPackaged&&fs.existsSync(path.join(installDirectory,'self-contained'));
 if(selfContained&&!smoke){
@@ -23,7 +25,7 @@ if(selfContained&&!smoke){
 if (smoke){app.setPath('userData',path.join(app.getPath('temp'),'jam-desktop-smoke'));for(const name of ['logs','crashDumps']){const folder=path.join(app.getPath('userData'),name);fs.mkdirSync(folder,{recursive:true});app.setPath(name,folder);}}
 if (smoke && !liveSmoke||process.argv.includes('--catalog-review')) app.disableHardwareAcceleration();
 require('electron').crashReporter.start({uploadToServer:false});
-let policy,appearanceView;
+let policy,appearanceView,videoSettings=require('./video-view.cjs').normalize(),videoBounds=null,videoSceneKey='',videoCssReady=false;
 let window, music, player, jam, room, tunnel, addons, appearanceOpen=false, panel={queue:'hidden',lyrics:'hidden'}, selectedTab = 'music', mode = 'music';
 const nativeMaterialSupported=process.platform==='win32'&&Number(require('node:os').release().split('.')[2])>=22621;
 let material=nativeMaterialSupported?'mica':'none',ambientTrack='',ambientBusy=false,lastLevelAt=0,visualsEnabled=true,lastAudioLevel=0;
@@ -38,7 +40,11 @@ function layout() {
   const [width,height]=window.getContentSize(),full=window.isFullScreen(),tv=mode==='tv'&&selectedTab==='music',top=full?60:72,inset=0;
   music.setBounds({x:inset,y:top,width:Math.max(300,width-inset*2),height:Math.max(0,height-top-inset)});
   if(appearanceView){appearanceView.setBounds({x:Math.max(0,width-350),y:top+8,width:334,height:Math.max(100,height-top-24)});appearanceView.setVisible(appearanceOpen&&selectedTab==='catalog');}
-  music.setVisible(require('./ui/surface-layout.js')(selectedTab,mode).remoteVisible);
+  const videoVisible=selectedTab==='music'&&videoSettings.enabled&&videoCssReady&&!!videoBounds;
+  if(videoVisible){const rect=require('./video-view.cjs').bounds(videoBounds,width,height,top);if(rect)music.setBounds(rect);}
+  music.setVisible(selectedTab==='catalog'||videoVisible);
+  const key=JSON.stringify({active:videoVisible,ambient:videoSettings.ambient,intensity:videoSettings.intensity,size:videoSettings.size,ultrawide:width/height>2.1});
+  if(key!==videoSceneKey&&/^https:\/\/(music.youtube.com|www.youtube.com\/tv)/.test(music.webContents.getURL())){videoSceneKey=key;music.webContents.executeJavaScript(fs.readFileSync(path.join(__dirname,'video-scene.js'),'utf8')+';window.__jamVideoScene.set('+key+');').catch(()=>{videoSceneKey='';});}
 }
 function finishSmoke(code){
 
@@ -64,6 +70,7 @@ app.whenReady().then(async () => {
   }
   require('electron').nativeTheme.themeSource='dark';
   const modeFile=path.join(app.getPath('userData'),'player-mode.json');
+  const videoFile=path.join(app.getPath('userData'),'video-view.json');try{if(!smoke)videoSettings=require('./video-view.cjs').normalize(JSON.parse(fs.readFileSync(videoFile,'utf8')));}catch{}
   let savedMode='music';try{const stored=JSON.parse(fs.readFileSync(modeFile,'utf8'));if(['music','tv'].includes(stored.mode))savedMode=stored.mode;}catch{}
   const identityFile = path.join(app.getPath('userData'), 'identity.json'); let identity;
   try { identity = JSON.parse(fs.readFileSync(identityFile, 'utf8')).id; if (!require('./protocol.cjs').uuid.test(identity)) identity = undefined; } catch {}
@@ -74,8 +81,8 @@ app.whenReady().then(async () => {
   const roomView = () => ({ ...room.view(), publicUrl: tunnel.url && room.token ? tunnel.url + '/#' + room.token : '' });
   fs.mkdirSync(path.dirname(identityFile), { recursive: true }); fs.writeFileSync(identityFile, JSON.stringify({ id: jam.identity }));
   const prefs = { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false };
-  window = new BrowserWindow({ width: 1320, height: 880, minWidth: 860, minHeight: 620, ...(process.platform==='win32'?{titleBarStyle:'hidden',titleBarOverlay:false}:{}), backgroundColor: nativeMaterialSupported?'#00000000':'#151a24',...(nativeMaterialSupported?{backgroundMaterial:'mica'}:{}), title: 'JAMSTORM', icon: path.join(__dirname, '../assets/icon.png'), autoHideMenuBar: true,
-    webPreferences: { ...prefs, offscreen: smoke && !liveSmoke, preload: path.join(__dirname, 'preload.cjs') }, show: !smoke || liveSmoke });
+  window = new BrowserWindow({ width: backgroundReview?2560:1320, height: backgroundReview?1080:880, minWidth: 860, minHeight: 620, ...(process.platform==='win32'?{titleBarStyle:'hidden',titleBarOverlay:false}:{}), backgroundColor: nativeMaterialSupported?'#00000000':'#151a24',...(nativeMaterialSupported?{backgroundMaterial:'mica'}:{}), title: 'JAMSTORM', icon: path.join(__dirname, '../assets/icon.png'), autoHideMenuBar: true,
+    webPreferences: { ...prefs, offscreen: smoke && !liveSmoke, preload: path.join(__dirname, 'preload.cjs') }, show: !backgroundReview&&(!smoke || liveSmoke),focusable:!backgroundReview });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (e, url) => { if (!isLocalPage(url)) e.preventDefault(); });
   window.webContents.session.setPermissionRequestHandler((_wc, _p, cb) => cb(false));
@@ -91,6 +98,7 @@ app.whenReady().then(async () => {
     callback({responseHeaders:headers});
   });
   music = new WebContentsView({ webPreferences: { ...prefs, session: musicSession, preload: path.join(__dirname, 'music-preload.cjs') } });
+  if(backgroundReview)music.webContents.setAudioMuted(true);
   music.setBackgroundColor(nativeMaterialSupported?'#00000000':'#151a24');
   await music.webContents.loadURL('about:blank');
   let hooksReady=false;music.webContents.debugger.on('detach',()=>hooksReady=false);
@@ -124,8 +132,10 @@ app.whenReady().then(async () => {
     if(remoteAllowed(url)) setImmediate(()=>music.webContents.loadURL(url).catch(error=>send('player:state',{phase:'error',message:error.message})));
     return {action:'deny'};
   });
-  music.webContents.on('did-start-loading', () => send('player:state', { phase: 'loading' }));
+  music.webContents.on('did-start-loading', () => {videoSceneKey='';send('player:state', { phase: 'loading' });});
+  music.webContents.on('did-navigate',()=>{videoCssReady=false;videoSceneKey='';});
   music.webContents.on('did-finish-load', () => {
+    if(/^https:\/\/(music.youtube.com|www.youtube.com\/tv)/.test(music.webContents.getURL()))music.webContents.insertCSS(fs.readFileSync(path.join(__dirname,'video-scene.css'),'utf8'),{cssOrigin:'user'}).then(()=>{videoCssReady=true;videoSceneKey='';layout();}).catch(()=>{});
     if(music.webContents.getURL().startsWith('https://music.youtube.com/'))accounts.refresh('music').catch(()=>{});else if(music.webContents.getURL().startsWith('https://www.youtube.com/tv'))accounts.refresh('tv').catch(()=>{});
     music.webContents.send('visual:enabled',visualsEnabled);music.webContents.send('filter:enabled',{block:policy.settings.blockExplicit,hide:policy.settings.hideExplicit});layout();send('player:state', { phase: 'ready' });
 
@@ -144,7 +154,7 @@ app.whenReady().then(async () => {
   await applyMode(smoke?(liveSmoke&&!musicSmoke?'tv':'music'):savedMode);
   jam.on('state', state => {
     if (state.role !== 'host') { tunnel.stop(); room.stop(); }
-    if (!music.webContents.isDestroyed()) music.webContents.setAudioMuted(state.role === 'guest');
+    if (!music.webContents.isDestroyed()) music.webContents.setAudioMuted(backgroundReview||state.role === 'guest');
     send('jam:state', state);
   });
   const log=(kind,details={})=>{try{const dir=app.getPath('logs');fs.mkdirSync(dir,{recursive:true});const file=path.join(dir,'runtime.log');if(fs.existsSync(file)&&fs.statSync(file).size>1000000)fs.renameSync(file,path.join(dir,'runtime.previous.log'));fs.appendFileSync(file,JSON.stringify({time:new Date().toISOString(),version:app.getVersion(),kind,mode,...details})+'\n');}catch{}};
@@ -155,6 +165,9 @@ app.whenReady().then(async () => {
   });
   let updateBusy=false;
   handle('app:accounts',refresh=>refresh===false?accounts.view():accounts.refresh());
+  handle('app:video',value=>{if(value!==undefined){if(!value||typeof value!=='object')throw Error('Invalid video preference');videoSettings=require('./video-view.cjs').normalize({...videoSettings,...value});if(!smoke)fs.writeFileSync(videoFile,JSON.stringify(videoSettings));videoSceneKey='';layout();send('app:video',videoSettings);}return videoSettings;});
+  handle('app:video-layout',value=>{videoBounds=value?.active===true?require('./video-view.cjs').bounds(value.bounds,...window.getContentSize(),window.isFullScreen()?60:72):null;layout();return {visible:!!videoBounds&&videoSettings.enabled};});
+  music.webContents.on('media-started-playing',()=>{if(selectedTab==='catalog'&&videoSettings.enabled&&videoSettings.followCatalog){selectedTab='music';layout();send('app:tab-changed','music');}});
   handle('app:feedback',async action=>{const script=require('./feedback.cjs').script(action);if(mode!=='music')throw Error('Открой меню трека в YouTube TV');if(action==='menu'){selectedTab='catalog';layout();music.webContents.focus();}const result=await music.webContents.executeJavaScript(script);if(!result.available)throw Error('Действие пока недоступно для этого трека');return {page:action==='menu'?'catalog':null};});
   handle('app:frame',()=>({overlay:process.platform==='win32'}));
   handle('app:presentation',async value=>{if(!value||!['dark','light'].includes(value.theme)||typeof value.glass!=='boolean'||!Number.isFinite(value.opacity))throw Error('Invalid presentation');const theme=require('electron').nativeTheme,source=value.system===true?'system':value.theme;if(theme.themeSource!==source)theme.themeSource=source;presentation=require('./presentation.cjs').normalize(value);await applyPresentation();return presentation;});
@@ -234,10 +247,10 @@ app.whenReady().then(async () => {
     if (remoteAllowed(music.webContents.getURL())) await music.webContents.executeJavaScript(`document.querySelector('video')?.pause()`);
     music.webContents.setAudioMuted(true);
     try { return await jam.join(invite); }
-    finally { if (jam.state.role !== 'guest') music.webContents.setAudioMuted(false); }
+    finally { if (jam.state.role !== 'guest') music.webContents.setAudioMuted(backgroundReview); }
   });
-  handle('jam:host', async () => { music.webContents.setAudioMuted(false); return await jam.host(controlledCommand); });
-  handle('jam:leave', () => { tunnel.stop(); room.stop(); jam.disconnect(); music.webContents.setAudioMuted(false); return jam.view(); });
+  handle('jam:host', async () => { music.webContents.setAudioMuted(backgroundReview); return await jam.host(controlledCommand); });
+  handle('jam:leave', () => { tunnel.stop(); room.stop(); jam.disconnect(); music.webContents.setAudioMuted(backgroundReview); return jam.view(); });
   handle('jam:command', async (op, fields) => {
     if (!fields || typeof fields !== 'object' || JSON.stringify(fields).length > 4096) throw new Error('Некорректная команда');
     if(!jam.state.role)await jam.host(controlledCommand);return jam.command(op, fields);
@@ -280,7 +293,7 @@ app.whenReady().then(async () => {
     }catch{}finally{ambientBusy=false;}
   },2500);
   const accountTimer=setInterval(()=>{if(mode==='tv')accounts.refresh('tv').catch(()=>{});},10000);
-  let appearanceCapturing=false;const appearanceTimer=setInterval(async()=>{if(appearanceCapturing||!appearanceOpen||selectedTab!=='catalog'||!appearanceView||appearanceView.webContents.isDestroyed()||music.webContents.isDestroyed())return;appearanceCapturing=true;try{const rect=appearanceView.getBounds(),base=music.getBounds();const image=await music.webContents.capturePage({x:Math.max(0,rect.x-base.x),y:Math.max(0,rect.y-base.y),width:rect.width,height:Math.min(rect.height,base.height-8)});if(appearanceView&&!appearanceView.webContents.isDestroyed())appearanceView.webContents.send('appearance:backdrop',image.toDataURL());}catch{}finally{appearanceCapturing=false;}},180);
+  let appearanceCapturing=false;const appearanceTimer=setInterval(async()=>{if(appearanceCapturing||!appearanceOpen||selectedTab!=='catalog'||!appearanceView||appearanceView.webContents.isDestroyed()||music.webContents.isDestroyed())return;appearanceCapturing=true;try{const rect=appearanceView.getBounds(),base=music.getBounds();const image=await music.webContents.capturePage({x:Math.max(0,rect.x-base.x),y:Math.max(0,rect.y-base.y),width:rect.width,height:Math.min(rect.height,base.height-8)},{stayHidden:true});if(appearanceView&&!appearanceView.webContents.isDestroyed())appearanceView.webContents.send('appearance:backdrop',image.toDataURL());}catch{}finally{appearanceCapturing=false;}},180);
   window.on('closed',()=>{if(appearanceView&&!appearanceView.webContents.isDestroyed())appearanceView.webContents.close({waitForBeforeUnload:false});clearInterval(appearanceTimer);clearInterval(accountTimer);clearInterval(ambientTimer);musicMetadata.close();recovery.close();});
   window.on('resize', layout); window.on('closed', () => { tunnel.stop(); room.stop(); jam.disconnect(); if(!music.webContents.isDestroyed())music.webContents.close({waitForBeforeUnload:false}); window = null; });
   await window.loadFile(path.join(__dirname, 'ui/index.html')); layout();send('app:mode',mode);
@@ -292,7 +305,7 @@ app.whenReady().then(async () => {
     if (Math.abs(scroll.barTop-10)>.5 || scroll.bodyScroll !== 0 || scroll.scrolled <= 0) throw new Error('Fixed topbar regression: '+JSON.stringify(scroll));
     const ipc = await window.webContents.executeJavaScript(`window.jam.state()`);
     if (!ipc.ok || ipc.value.phase !== 'idle') throw new Error('Local IPC failed');
-    if(!liveSmoke){
+    if(!liveSmoke&&!backgroundReview){
       await applyMode('tv');selectedTab='music';layout();send('app:mode','tv');await window.webContents.executeJavaScript(`tab('music')`);
       const tvExclusive=await window.webContents.executeJavaScript(`!document.querySelector('#listening-stage').hidden&&!document.querySelector('#overlay-queue').disabled`);
       if(music.getVisible()||!tvExclusive)throw new Error('TV shared scene is unavailable');
@@ -330,7 +343,7 @@ app.whenReady().then(async () => {
       if(process.argv.includes('--playback-only')){await music.webContents.debugger.sendCommand('Network.enable');music.webContents.debugger.on('message',(_event,method,params)=>{if(method==='Network.responseReceived'&&params.response?.url.includes('.googlevideo.com/'))console.log('MEDIA_HTTP',JSON.stringify({status:params.response.status,type:params.response.mimeType,path:new URL(params.response.url).pathname}));});}
 
       selectedTab = mode==='tv'?'catalog':'music'; layout();await window.webContents.executeJavaScript(`tab(${JSON.stringify(mode==='tv'?'catalog':'music')})`);
-      window.restore(); window.focus(); window.webContents.focus();
+      if(!backgroundReview){window.restore();window.focus();window.webContents.focus();}
       const timeout = setTimeout(() => { console.error('LIVE_SMOKE_TIMEOUT'); finishSmoke(1); }, 90000);
       try {
         await music.webContents.loadURL(home());
@@ -341,7 +354,7 @@ app.whenReady().then(async () => {
         if(process.argv.includes('--metadata-check')){for(const id of ['5NV6Rdv1a3I','XbGs_qK2PQA']){const value=await musicMetadata.get(id);console.log('LIVE_TV_METADATA',JSON.stringify({id,...value}));if(!value.known){console.log('METADATA_ERROR',musicMetadata.lastError);console.log('METADATA_CLIENT',await musicMetadata.view?.webContents.executeJavaScript(`({host:location.hostname,path:location.pathname,title:document.title,app:!!document.querySelector('ytmusic-app'),network:typeof document.querySelector('ytmusic-app')?.networkManager?.fetch})`).catch(()=>null));throw Error('TV metadata unavailable');}}const explicitRows=await musicMetadata.view.webContents.executeJavaScript(`(async()=>{const response=await document.querySelector('ytmusic-app').networkManager.fetch('/search',{query:'Eminem Rap God'}),found=[];const visit=o=>{if(!o||typeof o!=='object')return;const row=o.musicResponsiveListItemRenderer,id=row?.playlistItemData?.videoId;if(id&&/MUSIC_EXPLICIT_BADGE|EXPLICIT/.test(JSON.stringify(row.badges||[])))found.push(id);for(const value of Object.values(o))if(value&&typeof value==='object')visit(value);};visit(response);return [...new Set(found)].slice(0,4);})()`);console.log('MUSIC_EXPLICIT_SEARCH',explicitRows);if(!explicitRows.length)throw Error('No marked Music reference track');let confirmed=false;for(const id of explicitRows){const value=await musicMetadata.get(id);console.log('MARKED_TRACK',JSON.stringify({id,known:value.known,explicit:value.explicit}));if(value.known&&value.explicit)confirmed=true;}if(!confirmed)throw Error('Marked Music tracks lost E badge');clearTimeout(timeout);return finishSmoke(0);}
         if(process.argv.includes('--tv-review')){await require('../scripts/tv-review.cjs')({window,music,player,dir,path,fs});clearTimeout(timeout);return finishSmoke(0);}
         if(process.argv.includes('--catalog-review')){
-          await require('../scripts/catalog-review.cjs')({window,music,dir,path,fs});clearTimeout(timeout);return finishSmoke(0);
+          await require('../scripts/catalog-review.cjs')({window,music,player,dir,path,fs});clearTimeout(timeout);return finishSmoke(0);
         }
         if(process.argv.includes('--login-smoke-only')){
           console.log('LOGIN_BUTTON',await music.webContents.executeJavaScript(`[...document.querySelectorAll('ytmusic-nav-bar a,ytmusic-nav-bar button,ytmusic-nav-bar tp-yt-paper-button')].filter(el=>/^(Войти|Sign in)$/i.test(el.textContent.trim())).map(el=>({tag:el.tagName,href:el.getAttribute('href'),html:el.outerHTML.slice(0,900)}))`));
@@ -453,7 +466,7 @@ app.whenReady().then(async () => {
         console.log('LIVE_BACKGROUND', JSON.stringify({ mode, playing: background?.playing, position: background?.position,audioLevel:lastAudioLevel,material }));
         if (!background?.playing) throw new Error('Background playback paused');
         await music.webContents.executeJavaScript(`document.querySelector('video').pause()`);
-        window.restore();window.show();window.webContents.focus();
+        if(!backgroundReview){window.restore();window.show();window.webContents.focus();}
         await window.webContents.executeJavaScript(`window.jam.login()`);
         await new Promise(resolve=>setTimeout(resolve,2000));
         const login=await music.webContents.executeJavaScript(`({host:location.hostname,input:!!document.querySelector('input[type=email],input[name=identifier]'),unsupported:/couldn.t sign you in|browser or app may not be secure/i.test(document.body.innerText)})`);
