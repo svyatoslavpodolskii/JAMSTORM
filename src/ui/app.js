@@ -140,7 +140,7 @@ $('window-material').onchange=()=>{localStorage.setItem('window-material',$('win
 $('glass').addEventListener('click',nativeMaterial);nativeMaterial();
 let visualMotion=localStorage.getItem('ambient-sound')!=='off'&&!matchMedia('(prefers-reduced-motion: reduce)').matches;
 $('ambient-sound').checked=visualMotion;call(window.jam.visuals(visualMotion)).catch(()=>{});
-$('ambient-sound').onchange=()=>{visualMotion=$('ambient-sound').checked;localStorage.setItem('ambient-sound',visualMotion?'on':'off');call(window.jam.visuals(visualMotion)).catch(()=>{});if(!visualMotion)window.playerEffects.level(0);};
+$('ambient-sound').onchange=()=>{visualMotion=$('ambient-sound').checked;localStorage.setItem('ambient-sound',visualMotion?'on':'off');call(window.jam.visuals(visualMotion)).catch(()=>{});if(!visualMotion)window.playerEffects.level(0);window.dispatchEvent(new Event('reactivity-change'));};
 window.jam.onAmbient(color=>{if(Array.isArray(color)&&color.length===3&&color.every(value=>Number.isInteger(value)&&value>=0&&value<=255))window.playerEffects.ambient(color);});
 window.jam.onPalette(colors=>window.playerEffects.palette(colors));
 window.jam.onLevel(level=>{if(visualMotion)window.playerEffects.level(level);});

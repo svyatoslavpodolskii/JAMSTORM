@@ -21,6 +21,6 @@ class MusicMetadata{
    }catch{return {known:false};}
   })().finally(()=>this.pending.delete(id));this.pending.set(id,task);return task;
  }
- close(){const wc=this.view?.webContents;this.view=null;this.ready=null;if(wc&&!wc.isDestroyed())wc.close({waitForBeforeUnload:false});}
+ close(){const wc=this.view?.webContents;this.view=null;this.ready=null;if(wc&&!wc.isDestroyed()){wc.removeAllListeners?.();wc.close({waitForBeforeUnload:false});}}
 }
 module.exports={MusicMetadata};

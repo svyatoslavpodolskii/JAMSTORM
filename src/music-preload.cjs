@@ -76,4 +76,4 @@ document.addEventListener('loadstart',event=>{if(event.target instanceof HTMLMed
 document.addEventListener('loadedmetadata',event=>{if(wanted.has(event.target))authorizeTV(event.target);},true);
 window.addEventListener('jamstorm-track-check',()=>{const video=document.querySelector('video');if(video){approved.delete(video);authorizeTV(video);}});
 ipcRenderer.on('player:prepare-navigation',()=>{gateTicket++;});
-ipcRenderer.on('filter:enabled',(_event,value)=>{blockExplicit=!!value;if(document.documentElement)document.documentElement.dataset.jamstormExplicit=value?'block':'allow';const video=document.querySelector('video');if(value&&video&&!video.paused)authorizeTV(video);});
+ipcRenderer.on('filter:enabled',(_event,value)=>{blockExplicit=!!value;if(document.documentElement)document.documentElement.dataset.jamstormExplicit=value?'block':'allow';const video=document.querySelector('video');if(value&&video&&!video.paused){approved.delete(video);authorizeTV(video);}});

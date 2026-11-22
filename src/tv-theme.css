@@ -14,3 +14,5 @@ video,.html5-video-container video{object-fit:contain!important;width:100%!impor
 #app-background{width:100vw!important;height:100vh!important;inset:0!important;margin:0!important}
 ytlr-app-background-container,ytlr-surface-page,ytlr-tv-browse-renderer,ytlr-tv-surface-content-renderer{width:100vw!important;height:100vh!important;max-width:none!important}
 ytlr-audio-player-overlay-renderer{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;overflow:hidden!important}
+/* Expand browse lists as well as the background, without widening the guide. */
+yt-route,ytlr-surface-page :is(yt-virtual-list,ytlr-section-list-renderer,ytlr-horizontal-list-renderer,ytlr-two-column-renderer){width:100vw!important;min-width:100vw!important;max-width:100vw!important;box-sizing:border-box!important}

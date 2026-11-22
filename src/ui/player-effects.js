@@ -12,6 +12,11 @@
  document.getElementById('vinyl-paper').onchange=event=>set('paper',event.target.checked);
  document.getElementById('vinyl-toggle').onclick=()=>set('vinyl',!vinyl);document.getElementById('paper-toggle').onclick=()=>set('paper',!paper);
  async function update(item,clock,setImage){
+  document.body.classList.toggle('has-track',!!item?.videoId);
+  if(!item?.videoId){
+   if(track){track='';sequence++;motion?.cancel();setImage(item);window.dispatchEvent(new CustomEvent('artwork-change',{detail:item}));}
+   changing=false;tick(0,0,false);return;
+  }
   if((item?.videoId||'')!==track){
    const previous=track;track=item?.videoId||'';const generation=++sequence;changing=true;target(0);motion?.cancel();
    if(previous&&!reduced){motion=frame.animate([{opacity:1,transform:'translateY(0) scale(1)'},{opacity:0,transform:'translateY(18px) scale(.94)'}],{duration:280,easing:'ease-in-out',fill:'forwards'});await motion.finished.catch(()=>{});}

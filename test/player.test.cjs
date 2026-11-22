@@ -1,7 +1,16 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { JamPlayer } = require('../src/player.cjs');
+const vm=require('node:vm');
 const make = () => { const p = new JamPlayer({}); p.sample = async () => ({ videoId: 'abcdefghijk', title: 'Первый', artist: 'Исполнитель', playing: true, position: 10, duration: 1000 }); return p; };
+test('transport updates the native player and retries a transient media source replacement',async()=>{
+ let starts=0,attempts=0,pauses=0;
+ const native={getVideoData:()=>({video_id:'abcdefghijk'}),classList:{contains:()=>false},playVideo(){starts++;},pauseVideo(){pauses++;}};
+ const media={play:async()=>{assert.ok(starts>0);if(++attempts===1)throw Object.assign(Error('source changed'),{name:'AbortError'});},pause(){pauses++;}};
+ const player=new JamPlayer({executeJavaScript:source=>vm.runInNewContext(source,{window:{},document:{querySelector:s=>s==='video'?media:native},setTimeout,clearTimeout,Date,Promise,Error})});
+ await player.transport(true,'abcdefghijk');assert.equal(attempts,2);assert.equal(starts,2);
+ await player.transport(false,'abcdefghijk');assert.equal(pauses,2);
+});
 test('Jam queue retains stable occurrence IDs and rejects stale edits', async () => {
   const p = make(); const initial = await p.call({ op: 'SNAPSHOT' });
   const added = await p.call({ op: 'ADD', videoId: '12345678901' });

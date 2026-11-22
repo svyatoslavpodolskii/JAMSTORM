@@ -22,6 +22,11 @@ test('TV does not resume a stale stream after source change or Back',async()=>{
  for(const interrupt of ['loadstart','back']){const p=preload();p.emit('play');interrupt==='back'?p.navigate():p.emit('loadstart');p.requests[0]({allowed:true});await flush();assert.equal(p.video.plays||0,0);}
  const p=preload();p.filter(false);p.emit('play');assert.equal(p.requests.length,0);assert.equal(p.video.pauses||0,0);
 });
+test('enabling the E filter rechecks an already playing media element',async()=>{
+ const p=preload();p.emit('play');p.requests[0]({allowed:true});await flush();assert.equal(p.video.plays,1);
+ p.filter(false);p.filter(true);assert.ok(p.video.paused);assert.equal(p.requests.length,2);
+ p.requests[1]({allowed:false});await flush();assert.equal(p.video.plays,1);
+});
 test('renderer recovery coalesces failures and stops reload loops',async()=>{
  let finish,count=0,now=0;const phases=[],r=new RendererRecovery(()=>{count++;return new Promise(resolve=>finish=resolve);},phase=>phases.push(phase),()=>now);
  const one=r.recover({reason:'crashed'}),same=r.recover({reason:'oom'});assert.equal(one,same);await flush();assert.equal(count,1);finish();assert.equal(await one,true);

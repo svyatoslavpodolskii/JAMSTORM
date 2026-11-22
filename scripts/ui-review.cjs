@@ -101,12 +101,12 @@ app.whenReady().then(async()=>{
      const hit=document.elementFromPoint((search.left+search.right)/2,(search.top+search.bottom)/2);
      return {search,art,start,dock,stage,focused,searchClickable:!!hit?.closest('#stage-search'),startVisible:document.getElementById('hero-start').hidden||focused!=='artwork'||start.bottom<=stage.bottom+1};
     })()`);
-    if(!result.searchClickable||!result.startVisible||result.search.top<0||result.dock.height>0&&result.stage.bottom>result.dock.top||result.focused==='artwork'&&(result.art.top<result.stage.top||result.art.bottom>result.stage.bottom))geometryFailures.push({width,height,empty,value,result});
+    if(!result.searchClickable||!result.startVisible||result.search.top<0||result.dock.height>0&&result.stage.bottom>result.dock.top||result.focused==='artwork'&&result.art.height>0&&(result.art.top<result.stage.top||result.art.bottom>result.stage.bottom))geometryFailures.push({width,height,empty,value,result});
    }
   }
  }
  if(geometryFailures.length)throw new Error('Short-window clipping: '+JSON.stringify(geometryFailures));
- win.setSize(1163,774);await win.webContents.executeJavaScript(`render({...${JSON.stringify(state)},queue:{...${JSON.stringify(state.queue)},items:[]}});window.listening.panels({lyrics:'side',queue:'side'},false)`);await shot(win,'empty-short-fixed');
+ win.setSize(1163,774);await win.webContents.executeJavaScript(`render({...${JSON.stringify(state)},queue:{...${JSON.stringify(state.queue)},items:[]}});window.listening.panels({lyrics:'side',queue:'side'},false)`);if(!await win.webContents.executeJavaScript(`!document.body.classList.contains('has-track')&&getComputedStyle(document.querySelector('.cover-shell')).display==='none'`))throw Error('An empty player displays stale artwork');await shot(win,'empty-short-fixed');
  await win.webContents.executeJavaScript(`render(${JSON.stringify(state)});window.listening.panels({lyrics:'center',queue:'hidden'},false)`);await new Promise(resolve=>setTimeout(resolve,900));await shot(win,'lyrics-center');
  const centered=await win.webContents.executeJavaScript(`(()=>{const a=document.querySelector('#stage-lines .is-active').getBoundingClientRect(),b=document.querySelector('#stage-lines').getBoundingClientRect();const p=document.querySelector('#lyrics-pane').getBoundingClientRect();if(b.bottom>p.bottom||b.top<p.top)throw new Error('Lyrics scroll container exceeds its pane');return Math.abs((a.top+a.bottom-b.top-b.bottom)/2);})()`);if(centered>10)throw new Error('Lyric line is not centered: '+centered);
  await win.webContents.executeJavaScript(`window.listening.panels({lyrics:'hidden',queue:'center'},false)`);await shot(win,'queue-center');
@@ -166,8 +166,8 @@ app.whenReady().then(async()=>{
  const trail=await win.webContents.executeJavaScript(`window.immersion.history()`);if(trail!==2)throw Error('Waveform invents audio in skipped positions: '+trail);
  await shot(win,'waveform-trail');
  await win.webContents.executeJavaScript(`const choice=document.querySelector('#appearance-dock');choice.value='auto';choice.dispatchEvent(new Event('input'));document.activeElement?.blur()`);
- await new Promise(resolve=>setTimeout(resolve,3100));
- if(!await win.webContents.executeJavaScript(`document.body.classList.contains('dock-collapsed')&&getComputedStyle(document.querySelector('#playback-dock')).opacity==='0'`))throw Error('Player did not collapse');
+ let collapsed=false;for(let i=0;i<25;i++){await new Promise(resolve=>setTimeout(resolve,200));collapsed=await win.webContents.executeJavaScript(`document.body.classList.contains('dock-collapsed')&&getComputedStyle(document.querySelector('#playback-dock')).opacity==='0'`);if(collapsed)break;}
+ if(!collapsed)throw Error('Player did not collapse: '+JSON.stringify(await win.webContents.executeJavaScript(`({mode:document.body.dataset.dock,collapsed:document.body.classList.contains('dock-collapsed'),opacity:getComputedStyle(document.querySelector('#playback-dock')).opacity,hover:document.querySelector('#playback-dock').matches(':hover'),focus:document.activeElement.id})`)));
  await shot(win,'player-collapsed');
  await win.webContents.executeJavaScript(`document.querySelector('#dock-reveal').click()`);
  if(await win.webContents.executeJavaScript(`document.body.classList.contains('dock-collapsed')`))throw Error('Player did not reveal');

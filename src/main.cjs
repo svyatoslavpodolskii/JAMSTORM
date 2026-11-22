@@ -134,7 +134,7 @@ app.whenReady().then(async () => {
     if (mainFrame && code !== -3) { selectedTab = 'jam'; layout(); send('player:state', { phase: 'error', message: 'YouTube Music не загрузился. Проверь подключение к интернету.' }); }
   });
   player = new JamPlayer(music.webContents);player.policy=policy;
-  const musicMetadata=new (require('./music-metadata.cjs').MusicMetadata)(()=>{const view=new WebContentsView({webPreferences:{...prefs,session:musicSession}});view.webContents.setUserAgent(desktopUA);view.webContents.setAudioMuted(true);view.webContents.setWindowOpenHandler(()=>({action:'deny'}));view.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith('https://music.youtube.com/'))event.preventDefault();});return view;});
+  const musicMetadata=new (require('./music-metadata.cjs').MusicMetadata)(()=>{const view=new WebContentsView({webPreferences:{...prefs,session:musicSession,autoplayPolicy:'document-user-activation-required'}});view.webContents.setUserAgent(desktopUA);view.webContents.setAudioMuted(true);view.webContents.on('media-started-playing',()=>view.webContents.executeJavaScript(`for(const media of document.querySelectorAll('video,audio'))media.pause()`).catch(()=>{}));view.webContents.setWindowOpenHandler(()=>({action:'deny'}));view.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith('https://music.youtube.com/'))event.preventDefault();});return view;});
   player.native=new NativeQueue(music.webContents,()=>mode,musicMetadata);
   addons = new Addons(path.join(app.getPath('userData'), 'addons.json'), music.webContents, player);
   await addons.configure();
@@ -192,7 +192,7 @@ app.whenReady().then(async () => {
     if(mode!=='music')throw new Error('Для поиска переключи плеер на Music');
     await policy.verify(id,id=>player.native.metadata(id));
     let q=await player.call({op:'SNAPSHOT'}),item=q.items.find(row=>row.videoId===id);
-    if(!q.native||!q.items.length){await player.select({id:'loading',videoId:id},false);await player.ready(id);for(let attempt=0;attempt<80;attempt++){q=await player.call({op:'SNAPSHOT'});item=q.items.find(row=>row.videoId===id);if(item)break;await new Promise(resolve=>setTimeout(resolve,150));}if(!item)throw new Error('Очередь ещё загружается. Попробуй включить песню ещё раз.');q=await player.call({op:'PLAY',item:item.id,videoId:id,playing:true});}
+    if(!q.native||!q.items.length){await player.select({id:'loading',videoId:id},true);await player.ready(id);for(let attempt=0;attempt<80;attempt++){q=await player.call({op:'SNAPSHOT'});item=q.items.find(row=>row.videoId===id);if(item)break;await new Promise(resolve=>setTimeout(resolve,150));}if(!item)throw new Error('Очередь ещё загружается. Попробуй включить песню ещё раз.');q=await player.call({op:'PLAY',item:item.id,videoId:id,playing:true});}
     else{if(!item){q=await player.call({op:'ADD',videoId:id});item=q.items.find(row=>row.videoId===id);}if(item)q=await player.call({op:'PLAY',item:item.id,videoId:id,playing:true});}
     if(!q.ok)throw new Error(q.error);selectedTab='music';layout();return q;
   });

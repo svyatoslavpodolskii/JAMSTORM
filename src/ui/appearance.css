@@ -132,6 +132,11 @@ body[data-theme=light] .lyric-line{color:#526273}
 body[data-theme=light] .stage-empty h3{color:#273644}
 #stage-queue-caption{display:none}
 body:not(.has-track) .ambient-light{opacity:.16}
+body:not(.has-track) .cover-shell{display:none}
+body:not(.has-track) .hero-copy{max-width:460px}
+body[data-theme=dark] :is(.hero-copy p,.dock-song span,.stage-empty p,.setting-row small,.page-heading p,.about){color:#c9d1dd}
+#settings-page .settings-divider{display:none}
+#settings-page .connect-panel h3{margin:26px 0 2px;font-size:14px;font-weight:600}
 @media(max-width:950px){.topbar,.glass .topbar{gap:5px;padding-left:10px}.topbar .tab{padding-inline:10px}.window-controls{padding-left:3px;margin-left:0}.window-controls button{width:30px}}
 
 /* The entrance must release transform/opacity so the dock can actually hide. */
