@@ -9,6 +9,7 @@
  for(const [key,values] of Object.entries(options))if(!values.includes(prefs[key]))prefs[key]=defaults[key];
  for(const key of ['opacity','grain','motion'])prefs[key]=Number.isFinite(Number(prefs[key]))?Math.max(0,Math.min(100,Number(prefs[key]))):defaults[key];
  function apply(){
+  root.style.setProperty('--artwork-size',String(prefs.size/100));document.getElementById('size-value').value=prefs.size+'%';
   root.dataset.theme=prefs.theme==='system'?(system.matches?'light':'dark'):prefs.theme;
   root.dataset.background=prefs.background;
   for(const key of ['layout','palette','lyrics','visualizer','dock'])root.dataset[key]=prefs[key];
@@ -33,8 +34,13 @@
  window.addEventListener('reactivity-change',edited);window.addEventListener('vinyl-change',edited);window.addEventListener('glass-change',edited);document.getElementById('window-material').addEventListener('change',edited);
  const picture=document.createElement('div');picture.className='floating-artwork';picture.setAttribute('aria-hidden','true');document.getElementById('ambient-light').append(picture);
  window.addEventListener('artwork-change',event=>{const item=event.detail;picture.style.backgroundImage=item?.videoId?'url("'+window.artwork.cover(item)+'")':'none';});
+ const sizeLabel=document.createElement('label');sizeLabel.innerHTML='Размер обложки <output id="size-value"></output><input id="appearance-size" type="range" min="55" max="160" value="100">';document.getElementById('appearance-layout').closest('label').after(sizeLabel);prefs.size=Number.isFinite(Number(saved.size))?Math.max(55,Math.min(160,Number(saved.size))):100;document.getElementById('appearance-size').oninput=event=>{prefs.size=Number(event.target.value);edited();};
  system.addEventListener('change',apply);reduceGlass.addEventListener('change',apply);controls();list();apply();
- document.getElementById('appearance-popover').addEventListener('toggle',event=>window.jam.appearance(event.newState==='open').catch(()=>{}));
+ const popover=document.getElementById('appearance-popover');
+ function snapshot(){if(!popover.matches(':popover-open'))return;window.jam.appearanceSnapshot({html:popover.innerHTML,theme:root.dataset.theme,controls:[...popover.querySelectorAll('input,select,button')].filter(e=>e.id).map(e=>({id:e.id,value:e.value,checked:e.checked,disabled:e.disabled}))}).catch(()=>{});}
+ popover.addEventListener('toggle',async event=>{try{const response=await window.jam.appearance(event.newState==='open');root.classList.toggle('catalog-appearance',!!response.value?.overlay);snapshot();}catch{}});
+ for(const type of ['input','change','click'])popover.addEventListener(type,()=>setTimeout(snapshot,100));
+ window.jam.onAppearanceControl(value=>{if(value.id==='__close'){popover.hidePopover();return;}const target=[...popover.querySelectorAll('[id]')].find(e=>e.id===value.id);if(!target||target.disabled)return;if(value.type==='click')target.click();else{target.value=value.value;target.checked=value.checked;target.dispatchEvent(new Event(value.type,{bubbles:true}));}setTimeout(snapshot,100);});
  window.jam.frame().then(result=>{if(result.ok)root.classList.toggle('unified-frame',result.value.overlay);}).catch(()=>{});
  for(const button of document.querySelectorAll('[data-window]'))button.onclick=()=>window.jam.window(button.dataset.window).then(result=>{if(result.ok&&button.dataset.window==='maximize'){button.title=result.value.maximized?'Восстановить':'Развернуть';button.setAttribute('aria-label',button.title);}}).catch(()=>{});
  document.querySelector('.topbar').addEventListener('dblclick',event=>{if(!event.target.closest('button,input,select,a'))window.jam.window('maximize').catch(()=>{});});

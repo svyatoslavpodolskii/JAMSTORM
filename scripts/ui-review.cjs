@@ -11,8 +11,11 @@ const fixtures=[['5NV6Rdv1a3I','Get Lucky','Daft Punk'],['fLexgOxsZu0','Uptown F
 const windows=[];const errors=[];
 const handle=(key,fn)=>ipcMain.handle(key,async(_event,...args)=>{try{return {ok:true,value:await fn(...args)};}catch(error){return {ok:false,error:error.message};}});
 handle('unused:login-state',()=>{});
+handle('app:accounts',()=>({music:'signed-in',tv:'signed-out'}));
+handle('app:feedback',()=>({page:null}));
 handle('app:navigation',()=>({back:true,forward:false}));handle('app:navigate',()=>({back:false,forward:true}));
 handle('app:appearance',()=>{});
+handle('app:appearance-snapshot',()=>{});
 handle('app:frame',()=>({overlay:true}));
 handle('app:presentation',value=>value);handle('app:window',()=>({maximized:false}));
 handle('app:update',()=>({available:false}));
@@ -52,6 +55,8 @@ app.whenReady().then(async()=>{
  await win.webContents.executeJavaScript(`tab('invite')`);await shot(win,'03-invite');
  await win.webContents.executeJavaScript(`document.querySelector('#room-start').click()`);await new Promise(resolve=>setTimeout(resolve,400));await shot(win,'04-share-qr');
  await win.webContents.executeJavaScript(`tab('settings')`);await shot(win,'05-settings');
+ const accountState=await win.webContents.executeJavaScript(`({music:document.querySelector('#music-login').dataset.accountState,tv:document.querySelector('#tv-login').dataset.accountState})`);
+ if(accountState.music!=='signed-in'||accountState.tv!=='signed-out')throw Error('Account status is stale: '+JSON.stringify(accountState));
  win.setSize(860,700);await shot(win,'06-settings-small');
  await win.webContents.executeJavaScript(`document.querySelector('main').scrollTop=99999`);
  const settingsEnd=await win.webContents.executeJavaScript(`(()=>{const main=document.querySelector('main'),last=document.querySelector('#settings-page .about').getBoundingClientRect();return {bottom:last.bottom,viewport:main.getBoundingClientRect().bottom,dock:document.querySelector('#playback-dock').hidden};})()`);

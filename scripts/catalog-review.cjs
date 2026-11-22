@@ -2,6 +2,27 @@
 module.exports=async({window,music,dir,path,fs})=>{
  const output=path.join(dir,'catalog-review');fs.mkdirSync(output,{recursive:true});
  await window.webContents.executeJavaScript(`tab('catalog')`);
+ if(process.argv.includes('--appearance-overlay-review')){
+  console.log('OVERLAY_BEGIN');const before=music.getBounds();await window.webContents.executeJavaScript(`document.getElementById('appearance-popover').showPopover()`);await new Promise(r=>setTimeout(r,700));
+  console.log('OVERLAY_OPENED');const view=window.contentView.children.find(v=>v.webContents?.getURL().endsWith('/appearance-panel.html'));if(!view)throw Error('Appearance overlay missing');
+  if(JSON.stringify(before)!==JSON.stringify(music.getBounds()))throw Error('Appearance resizes catalog');
+  console.log('OVERLAY_VIEW',view.webContents.getURL());const controls=await view.webContents.executeJavaScript(`(()=>{const checkbox=document.querySelector('input[type=checkbox]'),panel=document.querySelector('#appearance-popover');return {checkboxWidth:checkbox?.getBoundingClientRect().width,panelWidth:panel.clientWidth,overflow:panel.scrollWidth>panel.clientWidth,size:!!document.querySelector('#appearance-size')};})()`);
+  if(controls.checkboxWidth>50||controls.overflow||!controls.size)throw Error('Appearance controls clip: '+JSON.stringify(controls));
+  await view.webContents.executeJavaScript(`window.appearancePanel.event({id:'appearance-size',type:'input',value:'130',checked:false})`);await new Promise(r=>setTimeout(r,250));
+  console.log('OVERLAY_CONTROL_SENT');const size=await window.webContents.executeJavaScript(`getComputedStyle(document.body).getPropertyValue('--artwork-size')`);if(size.trim()!=='1.3')throw Error('Overlay does not update main appearance');
+  try{fs.writeFileSync(path.join(output,'appearance-overlay.png'),(await view.webContents.capturePage()).toPNG());}catch(e){console.log('OVERLAY_CAPTURE_UNAVAILABLE',e.message);}console.log('APPEARANCE_OVERLAY_OK',JSON.stringify({catalogUnchanged:true,...controls,size}));return;
+ }
+ if(process.argv.includes('--dock-review')){
+  await music.webContents.loadURL('https://music.youtube.com/watch?v=5NV6Rdv1a3I');await new Promise(r=>setTimeout(r,4500));
+  const result=await music.webContents.executeJavaScript(`(()=>{const bar=document.querySelector('ytmusic-player-bar'),like=bar?.querySelector('ytmusic-like-button-renderer');return {bar:!!bar,menu:!!bar?.querySelector('ytmusic-menu-renderer button,ytmusic-menu-renderer tp-yt-paper-icon-button'),background:getComputedStyle(bar).backgroundImage,blur:getComputedStyle(bar).backdropFilter,border:getComputedStyle(document.querySelector('ytmusic-nav-bar'),'::before').borderBottomWidth};})()`);
+  for(const action of ['like','dislike'])result[action]=(await music.webContents.executeJavaScript(require('../src/feedback.cjs').script(action).replace('button.click();',''))).available;console.log('NATIVE_DOCK',JSON.stringify(result));if(!result.like||!result.dislike||!result.menu||result.blur==='none'||result.border!=='0px')throw Error('Native dock controls or glass failed');fs.writeFileSync(path.join(output,'native-dock.png'),(await window.webContents.capturePage()).toPNG());return;
+ }
+ if(process.argv.includes('--explicit-review')){
+  await music.webContents.loadURL('https://music.youtube.com/search?q=Eminem+Rap+God');
+  await new Promise(r=>setTimeout(r,3500));
+  const result=await music.webContents.executeJavaScript(`(()=>{const rows=[...document.querySelectorAll('ytmusic-responsive-list-item-renderer,ytmusic-two-row-item-renderer')];const hidden=rows.filter(e=>e.dataset.jamExplicitHidden==='true');return {rows:rows.length,hidden:hidden.length,displayHidden:hidden.every(e=>getComputedStyle(e).display==='none'),cleanVisible:rows.some(e=>!e.dataset.jamExplicitHidden&&getComputedStyle(e).display!=='none')};})()`);
+  console.log('EXPLICIT_CATALOG',JSON.stringify(result));if(!result.hidden||!result.displayHidden||!result.cleanVisible)throw Error('Explicit catalog hiding failed');return;
+ }
  const art=require('node:url').pathToFileURL(path.join(__dirname,'../.github/media/cover-demo.svg')).href;
  await window.webContents.executeJavaScript(`document.body.classList.remove('booting','intro-running');document.querySelector('#boot-screen').hidden=true;window.playerEffects.ambient([70,130,180]);document.querySelector('.floating-artwork').style.backgroundImage='url('+${JSON.stringify(art)}+')';`);
  const shot=async name=>{try{fs.writeFileSync(path.join(output,name+'.png'),(await window.webContents.capturePage()).toPNG());}catch(error){if(!/Current display surface not available/.test(error.message))throw error;console.log('CAPTURE_UNAVAILABLE',name);}};

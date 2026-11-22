@@ -58,6 +58,7 @@ function render(next) {
   if (state.error) message(state.error);
 }
 async function tab(value) {
+  if(value==='settings')refreshAccounts();
   document.body.classList.toggle('queue-view',value==='jam');const result=await call(window.jam.tab(value));if(result?.mode){$('player-mode').value=result.mode;window.listening.mode(result.mode);}window.listening?.page(value);document.body.classList.toggle('player-view',value==='music'||value==='catalog');
   for(const [id,key] of [['queue-page','jam'],['invite-page','invite'],['settings-page','settings']]) $(id).hidden=value!==key;
   document.querySelector('.intro').textContent=({jam:'Всё, что хочется услышать дальше.',invite:'Один плеер. Каждый добавляет своё.',settings:'Пусть всё будет по-твоему.'})[value]||'';
@@ -66,6 +67,27 @@ async function tab(value) {
 }
 window.jam.onLogin(text=>{const hint=$('music-login').closest('.setting-row')?.querySelector('small');if(hint)hint.textContent=text;message(text);});
 $('music-login').onclick=()=>action(async()=>{await call(window.jam.login());});
+const tvAccountRow=document.createElement('div');tvAccountRow.className='setting-row';
+tvAccountRow.innerHTML='<span><strong>Аккаунт Music TV</strong><small id="tv-account-status">Отдельное подключение в YouTube TV</small></span><button id="tv-login" class="secondary">Подключить TV</button>';
+$('music-login').closest('.setting-row').after(tvAccountRow);
+function renderAccounts(value){
+ for(const kind of ['music','tv']){
+  const signed=value[kind]==='signed-in',button=$(kind==='music'?'music-login':'tv-login');button.dataset.accountState=value[kind]||'unknown';
+  const hint=button.closest('.setting-row').querySelector('small');
+  button.textContent=kind==='music'?(signed?'Сменить аккаунт':'Войти'):(signed?'Открыть TV':'Подключить TV');
+  hint.textContent=signed?'Вход выполнен':kind==='tv'?'Вход по коду в самом YouTube TV':value.music==='signed-out'?'Вход через Chrome или Edge':'Проверяем подключение Music…';
+ }
+}
+async function refreshAccounts(){try{renderAccounts(await call(window.jam.accounts()));}catch{}}
+window.jam.onAccounts(renderAccounts);call(window.jam.accounts(false)).then(renderAccounts).catch(()=>{});
+window.jam.onLogin(text=>{if(text.startsWith('Вход завершён'))refreshAccounts();});
+$('tv-login').onclick=()=>action(async()=>{await call(window.jam.login('tv'));await tab('catalog');});
+const feedbackGroup=document.createElement('div');feedbackGroup.className='panel-switches track-feedback';feedbackGroup.setAttribute('aria-label','Оценка трека');
+for(const [kind,label,path] of [['like','Нравится','M7 10v11H3V10zm0 0 5-8 2 1v6h5a2 2 0 0 1 2 2l-2 8a3 3 0 0 1-3 2H7'],['dislike','Не нравится','M7 14V3H3v11zm0 0 5 8 2-1v-6h5a2 2 0 0 0 2-2l-2-8a3 3 0 0 0-3-2H7'],['menu','Меню трека','M5 12h.01M12 12h.01M19 12h.01']]){
+ const button=document.createElement('button');button.id='feedback-'+kind;button.title=label;button.setAttribute('aria-label',label);button.innerHTML='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="'+path+'"/></svg>';button.onclick=()=>action(async()=>{const result=await call(window.jam.feedback(kind));if(result?.page)await tab(result.page);});feedbackGroup.append(button);
+}
+document.querySelector('.dock-actions').prepend(feedbackGroup);
+setInterval(()=>{if(!$('settings-page').hidden)refreshAccounts();},10000);
 $('catalog-tab').onclick=()=>action(()=>tab('catalog'));
 $('music-tab').addEventListener('click', () => action(() => tab('music')));
 $('jam-tab').addEventListener('click', () => action(() => tab('jam')));
@@ -128,6 +150,7 @@ $('invite-tab').onclick=()=>action(async()=>{await tab('invite');if(!roomState.a
 $('overlay-queue').onclick=()=>action(async()=>{await tab('music');panels(await call(window.jam.panel('queue')));});
 $('overlay-lyrics').onclick=()=>action(async()=>{await tab('music');panels(await call(window.jam.panel('lyrics')));});
 window.jam.onFullscreen(value=>document.body.classList.toggle('fullscreen',value));
+const exitFullscreen=document.createElement('button');exitFullscreen.className='stage-icon';exitFullscreen.title='Выйти из полного экрана · Esc';exitFullscreen.setAttribute('aria-label','Выйти из полного экрана');exitFullscreen.innerHTML='<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 9h5V4m11 5h-5V4M4 15h5v5m11-5h-5v5"/></svg>';exitFullscreen.onclick=()=>window.jam.window('fullscreen-exit');document.getElementById('fullscreen-nav').append(exitFullscreen);
 let pollingQueue=false;
 setInterval(async()=>{if(pollingQueue)return;pollingQueue=true;try{const queue=await call(window.jam.queue());if(queue)render({...state,queue});}catch{}finally{pollingQueue=false;}},1500);
 

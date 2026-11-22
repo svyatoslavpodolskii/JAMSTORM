@@ -2,6 +2,8 @@
 (() => {
   const el=id=>document.getElementById(id),stage=el('listening-stage'),dock=el('playback-dock');
   const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let lyricScrollFrame=0;
+  function scrollLyrics(container,target){cancelAnimationFrame(lyricScrollFrame);target=Math.max(0,Math.min(container.scrollHeight-container.clientHeight,target));if(reduced){container.scrollTop=target;return;}let y=container.scrollTop,velocity=0,last=performance.now();const step=now=>{const dt=Math.min(.032,(now-last)/1000);last=now;if(now<manualUntil)return;velocity+=((target-y)*110-velocity*18)*dt;y+=velocity*dt;container.scrollTop=y;if(Math.abs(target-y)>.3||Math.abs(velocity)>.3)lyricScrollFrame=requestAnimationFrame(step);else container.scrollTop=target;};lyricScrollFrame=requestAnimationFrame(step);}
   let queue=null,page='music',mode='music',panels={lyrics:'hidden',queue:'hidden'},rowsKey='',trackKey='',lyricKey='',lyricRequest=0,lines=[],highlight=-1,clock={},received=0,displayPosition=null,lastTick=0,seekUntil=0,manualUntil=0,searching=false,lyricAvailable=null,peekState=null;
   const pauseIcon='<svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="M7 5h3v14H7zm7 0h3v14h-3z"/></svg>';
   const playIcon='<svg viewBox="0 0 24 24" width="21" height="21" fill="currentColor"><path d="m8 5 12 7-12 7z"/></svg>';
@@ -101,7 +103,7 @@
     if(!lines.length||panels.lyrics==='hidden')return;let index=-1;for(let i=0;i<lines.length;i++){if(lines[i].time>position)break;index=i;}if(index===highlight)return;const previous=highlight;highlight=index;
     const container=el('stage-lines');[...container.children].forEach((line,i)=>{line.classList.toggle('is-active',i===index);line.classList.toggle('is-past',i<index);});
     window.dispatchEvent(new CustomEvent('lyric-change',{detail:{previous:container.children[previous],current:container.children[index]}}));
-    const line=container.children[index];if(line&&performance.now()>manualUntil)container.scrollTo({top:Math.max(0,container.scrollTop+line.getBoundingClientRect().top-container.getBoundingClientRect().top-(container.clientHeight-line.offsetHeight)/2),behavior:reduced?'instant':'smooth'});
+    const line=container.children[index];if(line&&performance.now()>manualUntil)scrollLyrics(container,container.scrollTop+line.getBoundingClientRect().top-container.getBoundingClientRect().top-(container.clientHeight-line.offsetHeight)/2);
   }
   function openSearch(){if(mode==='tv'){tab('catalog').catch(fail);return;}el('search-dialog').showModal();el('stage-query').focus();}
   for(const id of ['stage-search','hero-start','stage-add'])el(id).onclick=openSearch;

@@ -38,15 +38,22 @@ ytmusic-app{--ytmusic-color-white1:var(--jam-ink);--ytmusic-color-white2:var(--j
 /* Lift the actual header above the cards. Its previous internal backdrop was
    behind some card stacking contexts, so sharp images leaked through it. */
 ytmusic-nav-bar{z-index:1000!important;isolation:isolate;background:transparent!important;backdrop-filter:none!important;border:0!important;box-shadow:none!important;left:0!important;right:0!important;width:auto!important;color:var(--jam-ink)!important}
-ytmusic-nav-bar:before{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;background:rgb(var(--jam-base) / calc(.42 - var(--jam-transparency)*.38));backdrop-filter:blur(32px) saturate(115%);border-bottom:1px solid rgb(var(--jam-control) / .055)}
+ytmusic-nav-bar:before{content:'';position:absolute;inset:0;z-index:-1;pointer-events:none;background:rgb(var(--jam-base) / calc(.42 - var(--jam-transparency)*.38));backdrop-filter:blur(32px) saturate(115%);border-bottom:0}
 #nav-bar-background{display:none!important}
 ytmusic-search-box #search-container,ytmusic-search-box[opened] #search-container,ytmusic-search-box[has-focus] #search-container,ytmusic-search-box #input-container{background:rgb(var(--jam-control) / .065)!important;backdrop-filter:none!important;border:1px solid rgb(var(--jam-control) / .09)!important;border-radius:13px!important;box-shadow:none!important}
 ytmusic-search-box input{color:var(--jam-ink)!important}
 ytmusic-search-box #suggestion-list,ytmusic-search-box #suggestions{background:rgb(var(--jam-base) / .96)!important;color:var(--jam-ink)!important}
 ytmusic-nav-bar tp-yt-iron-icon,ytmusic-guide-renderer tp-yt-iron-icon{color:var(--jam-ink)!important}
 ytmusic-player-bar{background:rgb(var(--jam-base) / .5)!important;color:var(--jam-ink)!important}
-:root[data-jam-glass=off] ytmusic-nav-bar:before{background:rgb(var(--jam-base));backdrop-filter:none;border-bottom-color:rgb(var(--jam-control) / .07)}
+:root[data-jam-glass=off] ytmusic-nav-bar:before{background:rgb(var(--jam-base));backdrop-filter:none;border-bottom:0}
 :root[data-jam-glass=off] ytmusic-player-bar{background:rgb(var(--jam-base))!important;backdrop-filter:none!important}
+/* Native menus must stack above the fixed Music search header. */
+ytmusic-popup-container{z-index:2147483000!important}
+ytmusic-popup-container tp-yt-iron-dropdown{z-index:2147483001!important;max-height:calc(100vh - 16px)!important}
+ytmusic-menu-popup-renderer,ytmusic-multi-page-menu-renderer{background:rgb(var(--jam-base) / .74)!important;backdrop-filter:blur(32px) saturate(135%)!important;color:var(--jam-ink)!important;border:1px solid rgb(var(--jam-control) / .15)!important;border-radius:18px!important;overflow:hidden!important;box-shadow:0 16px 50px #0003!important}
+ytmusic-menu-popup-renderer :is(tp-yt-paper-listbox,#items){background:transparent!important;scrollbar-width:thin;scrollbar-color:rgb(var(--jam-control) / .25) transparent}
+:root[data-jam-glass=off] :is(ytmusic-menu-popup-renderer,ytmusic-multi-page-menu-renderer){background:rgb(var(--jam-base))!important;backdrop-filter:none!important}
+ytmusic-app ::-webkit-scrollbar-button,ytmusic-popup-container ::-webkit-scrollbar-button{display:none!important;width:0!important;height:0!important}
 :root[data-jam-theme=light] ytmusic-nav-bar .logo,:root[data-jam-theme=light] ytmusic-nav-bar .logo-container{filter:brightness(.25)}
 :root[data-jam-theme=light]{color-scheme:light!important}
 html{scrollbar-width:thin;scrollbar-color:rgb(var(--jam-control) / .2) transparent}
@@ -62,3 +69,8 @@ ytmusic-app ::-webkit-scrollbar{width:8px;height:5px}
 ytmusic-app ::-webkit-scrollbar-thumb{background:rgb(var(--jam-control) / .2);border-radius:8px}
 ytmusic-app ::-webkit-scrollbar-track{background:transparent}
 :root[data-jam-theme=light] ytmusic-guide-renderer :is(button,button span,.yt-core-attributed-string){color:var(--jam-ink)!important}
+[data-jam-explicit-hidden="true"]{display:none!important}
+/* The native dock has its own solid surface below the host element. */
+ytmusic-player-bar{background:linear-gradient(125deg,rgb(var(--jam-control) / .10),rgb(var(--jam-base) / calc(.40 - var(--jam-transparency)*.30)))!important;border-color:rgb(var(--jam-control) / .15)!important;backdrop-filter:blur(32px) saturate(135%)!important;overflow:visible!important}
+ytmusic-player-bar #background,ytmusic-player-bar #player-bar-background,ytmusic-player-bar .background{background:transparent!important;background-image:none!important}
+:root[data-jam-glass=off] ytmusic-player-bar{background:rgb(var(--jam-base))!important;backdrop-filter:none!important}

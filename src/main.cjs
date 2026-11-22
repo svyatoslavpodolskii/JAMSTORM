@@ -23,7 +23,7 @@ if(selfContained&&!smoke){
 if (smoke){app.setPath('userData',path.join(app.getPath('temp'),'jam-desktop-smoke'));for(const name of ['logs','crashDumps']){const folder=path.join(app.getPath('userData'),name);fs.mkdirSync(folder,{recursive:true});app.setPath(name,folder);}}
 if (smoke && !liveSmoke||process.argv.includes('--catalog-review')) app.disableHardwareAcceleration();
 require('electron').crashReporter.start({uploadToServer:false});
-let policy;
+let policy,appearanceView;
 let window, music, player, jam, room, tunnel, addons, appearanceOpen=false, panel={queue:'hidden',lyrics:'hidden'}, selectedTab = 'music', mode = 'music';
 const nativeMaterialSupported=process.platform==='win32'&&Number(require('node:os').release().split('.')[2])>=22621;
 let material=nativeMaterialSupported?'mica':'none',ambientTrack='',ambientBusy=false,lastLevelAt=0,visualsEnabled=true,lastAudioLevel=0;
@@ -36,7 +36,8 @@ const {remoteAllowed}=require('./navigation.cjs');
 function layout() {
   if(!window||!music)return;
   const [width,height]=window.getContentSize(),full=window.isFullScreen(),tv=mode==='tv'&&selectedTab==='music',top=full?60:72,inset=0;
-  music.setBounds({x:inset,y:top,width:Math.max(300,width-inset*2-(appearanceOpen?350:0)),height:Math.max(0,height-top-inset)});
+  music.setBounds({x:inset,y:top,width:Math.max(300,width-inset*2),height:Math.max(0,height-top-inset)});
+  if(appearanceView){appearanceView.setBounds({x:Math.max(0,width-350),y:top+8,width:334,height:Math.max(100,height-top-24)});appearanceView.setVisible(appearanceOpen&&selectedTab==='catalog');}
   music.setVisible(require('./ui/surface-layout.js')(selectedTab,mode).remoteVisible);
 }
 function finishSmoke(code){
@@ -125,7 +126,8 @@ app.whenReady().then(async () => {
   });
   music.webContents.on('did-start-loading', () => send('player:state', { phase: 'loading' }));
   music.webContents.on('did-finish-load', () => {
-    music.webContents.send('visual:enabled',visualsEnabled);music.webContents.send('filter:enabled',policy.settings.blockExplicit);layout();send('player:state', { phase: 'ready' });
+    if(music.webContents.getURL().startsWith('https://music.youtube.com/'))accounts.refresh('music').catch(()=>{});else if(music.webContents.getURL().startsWith('https://www.youtube.com/tv'))accounts.refresh('tv').catch(()=>{});
+    music.webContents.send('visual:enabled',visualsEnabled);music.webContents.send('filter:enabled',{block:policy.settings.blockExplicit,hide:policy.settings.hideExplicit});layout();send('player:state', { phase: 'ready' });
 
     if(music.webContents.getURL().startsWith('https://www.youtube.com/tv'))music.webContents.insertCSS(fs.readFileSync(path.join(__dirname,'tv-theme.css'),'utf8')).catch(()=>{});
     if(music.webContents.getURL().startsWith('https://music.youtube.com/'))music.webContents.insertCSS(fs.readFileSync(path.join(__dirname,'music-theme.css'),'utf8'),{cssOrigin:'user'}).then(applyPresentation).catch(()=>{});
@@ -136,6 +138,7 @@ app.whenReady().then(async () => {
   player = new JamPlayer(music.webContents);player.policy=policy;
   const musicMetadata=new (require('./music-metadata.cjs').MusicMetadata)(()=>{const view=new WebContentsView({webPreferences:{...prefs,session:musicSession,autoplayPolicy:'document-user-activation-required'}});view.webContents.setUserAgent(desktopUA);view.webContents.setAudioMuted(true);view.webContents.on('media-started-playing',()=>view.webContents.executeJavaScript(`for(const media of document.querySelectorAll('video,audio'))media.pause()`).catch(()=>{}));view.webContents.setWindowOpenHandler(()=>({action:'deny'}));view.webContents.on('will-navigate',(event,url)=>{if(!url.startsWith('https://music.youtube.com/'))event.preventDefault();});return view;});
   player.native=new NativeQueue(music.webContents,()=>mode,musicMetadata);
+  const accountScripts=require('./accounts.cjs');const accounts=new accountScripts.Accounts({music:async()=>{const wc=music.webContents.getURL().startsWith('https://music.youtube.com/')?music.webContents:await musicMetadata.client();return wc.executeJavaScript(accountScripts.musicScript);},tv:async()=>{if(mode!=='tv'||!music.webContents.getURL().startsWith('https://www.youtube.com/tv'))return undefined;return music.webContents.executeJavaScript(accountScripts.tvScript);}},value=>send('app:accounts',value));
   addons = new Addons(path.join(app.getPath('userData'), 'addons.json'), music.webContents, player);
   await addons.configure();
   await applyMode(smoke?(liveSmoke&&!musicSmoke?'tv':'music'):savedMode);
@@ -151,10 +154,14 @@ app.whenReady().then(async () => {
     try { guard(event);return { ok: true, value: await fn(...args) }; } catch (e) { return { ok: false, error: e?.message||'Плеер ещё загружается. Попробуй ещё раз.' }; }
   });
   let updateBusy=false;
+  handle('app:accounts',refresh=>refresh===false?accounts.view():accounts.refresh());
+  handle('app:feedback',async action=>{const script=require('./feedback.cjs').script(action);if(mode!=='music')throw Error('Открой меню трека в YouTube TV');if(action==='menu'){selectedTab='catalog';layout();music.webContents.focus();}const result=await music.webContents.executeJavaScript(script);if(!result.available)throw Error('Действие пока недоступно для этого трека');return {page:action==='menu'?'catalog':null};});
   handle('app:frame',()=>({overlay:process.platform==='win32'}));
   handle('app:presentation',async value=>{if(!value||!['dark','light'].includes(value.theme)||typeof value.glass!=='boolean'||!Number.isFinite(value.opacity))throw Error('Invalid presentation');const theme=require('electron').nativeTheme,source=value.system===true?'system':value.theme;if(theme.themeSource!==source)theme.themeSource=source;presentation=require('./presentation.cjs').normalize(value);await applyPresentation();return presentation;});
-  handle('app:window',action=>{if(action==='minimize')window.minimize();else if(action==='maximize'){if(window.isMaximized())window.unmaximize();else window.maximize();}else if(action==='close')window.close();else throw Error('Invalid window action');return {maximized:window&&!window.isDestroyed()?window.isMaximized():false};});
-  handle('app:appearance',open=>{if(typeof open!=='boolean')throw Error('Invalid appearance state');appearanceOpen=open;layout();});
+  handle('app:window',action=>{if(action==='fullscreen-exit'){music.webContents.executeJavaScript('document.exitFullscreen?.().catch(()=>{})').catch(()=>{});window.setFullScreen(false);}else if(action==='minimize')window.minimize();else if(action==='maximize'){if(window.isMaximized())window.unmaximize();else window.maximize();}else if(action==='close')window.close();else throw Error('Invalid window action');return {maximized:window&&!window.isDestroyed()?window.isMaximized():false};});
+  handle('app:appearance',async open=>{if(typeof open!=='boolean')throw Error('Invalid appearance state');appearanceOpen=open;if(open&&selectedTab==='catalog'&&!appearanceView){appearanceView=new WebContentsView({webPreferences:{preload:path.join(__dirname,'appearance-panel-preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}});appearanceView.setBackgroundColor('#00000000');window.contentView.addChildView(appearanceView);await appearanceView.webContents.loadFile(path.join(__dirname,'ui/appearance-panel.html'));}layout();return {overlay:open&&selectedTab==='catalog'};});
+  handle('app:appearance-snapshot',value=>{if(appearanceOpen&&appearanceView&&!appearanceView.webContents.isDestroyed())appearanceView.webContents.send('appearance:snapshot',value);});
+  ipcMain.on('appearance:event',(event,value)=>{if(!appearanceView||event.sender!==appearanceView.webContents||event.senderFrame!==event.sender.mainFrame||!require('./local-page.cjs').localPageGuard(path.join(__dirname,'ui/appearance-panel.html'))(event.senderFrame.url))return;if(!value||typeof value.id!=='string'||value.id.length>80||!['input','change','click'].includes(value.type)||typeof(value.value||'')!=='string'||(value.value||'').length>200)return;send('app:appearance-control',value);});
   handle('app:update',async install=>{
     if(updateBusy)throw Error('Обновление уже выполняется');
     updateBusy=true;
@@ -181,7 +188,7 @@ app.whenReady().then(async () => {
     return navigationState();
   });
   function controlledCommand(command,context={}){if(['SNAPSHOT','SYNC'].includes(command.op))return player.call(command);return policy.run(command,context.actor,cmd=>player.call(cmd),()=>player.call({op:'SNAPSHOT'}),id=>player.native.metadata(id));}
-  handle('app:policy',value=>{if(value){policy.set(value);music.webContents.send('filter:enabled',policy.settings.blockExplicit);}return policy.settings;});
+  handle('app:policy',value=>{if(value){policy.set(value);music.webContents.send('filter:enabled',{block:policy.settings.blockExplicit,hide:policy.settings.hideExplicit});}return policy.settings;});
   handle('jam:state', () => jam.view());
   handle('app:queue',async()=>{const value=jam.state.role==='guest'?jam.state.queue:await player.call({op:'SNAPSHOT'});layout();return value;});
   handle('app:lyrics',track=>lyrics.get(track));
@@ -246,9 +253,9 @@ app.whenReady().then(async () => {
   handle('room:local', () => { tunnel.stop(); return roomView(); });
   handle('room:copy', () => { if (!room.url) throw new Error('Открой комнату'); clipboard.writeText(roomView().publicUrl || room.url); });
   handle('room:qr', () => { if (!room.url) throw new Error('Открой комнату'); return QRCode.toDataURL(roomView().publicUrl || room.url, { margin: 3, width: 256 }); });
-  const browserLogin=new (require('./browser-login.cjs').BrowserLogin)(path.join(app.getPath('userData'),'login-browser-human'),musicSession,async()=>{const previous=mode;await applyMode('music');await music.webContents.loadURL('https://music.youtube.com/');const connected=await music.webContents.executeJavaScript(`new Promise(resolve=>{let attempts=0;const check=()=>{if(window.ytcfg?.get('LOGGED_IN')===true)return resolve(true);if(++attempts>40)return resolve(false);setTimeout(check,200);};check();})`);if(previous==='tv'){await applyMode('tv');await music.webContents.loadURL(home());}if(!connected)throw Error('YouTube did not confirm login');selectedTab='catalog';layout();send('app:mode',mode);},text=>send('app:login-state',text));
+  const browserLogin=new (require('./browser-login.cjs').BrowserLogin)(path.join(app.getPath('userData'),'login-browser-human'),musicSession,async()=>{const previous=mode;await applyMode('music');await music.webContents.loadURL('https://music.youtube.com/');const connected=await music.webContents.executeJavaScript(`new Promise(resolve=>{let attempts=0;const check=()=>{if(window.ytcfg?.get('LOGGED_IN')===true)return resolve(true);if(++attempts>40)return resolve(false);setTimeout(check,200);};check();})`);if(previous==='tv'){await applyMode('tv');await music.webContents.loadURL(home());}if(!connected)throw Error('YouTube did not confirm login');accounts.set('music',true);musicMetadata.close();selectedTab='catalog';layout();send('app:mode',mode);},text=>send('app:login-state',text));
   app.once('before-quit',()=>{if(browserLogin.active){browserLogin.command('Browser.close').catch(()=>{});browserLogin.stop();}});
-  handle('app:login', async () => {if(smoke){selectedTab='catalog';layout();await music.webContents.loadURL('https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F');return;}return browserLogin.start();});
+  handle('app:login', async(target='music')=>{if(!['music','tv'].includes(target))throw Error('Unknown account');if(target==='tv'){await prepareNavigation();if(mode!=='tv'){await applyMode('tv');if(!smoke)fs.writeFileSync(modeFile,JSON.stringify({mode:'tv'}));}selectedTab='catalog';layout();send('app:mode','tv');if(!music.webContents.getURL().startsWith('https://www.youtube.com/tv'))await music.webContents.loadURL(home());await accounts.refresh('tv');if(accounts.view().tv!=='signed-in'){const opened=await music.webContents.executeJavaScript(accountScripts.tvLoginScript);if(!opened)throw Error('TV sign-in is not ready');}return {mode:'tv',page:'catalog'};}if(smoke){selectedTab='catalog';layout();await music.webContents.loadURL('https://accounts.google.com/ServiceLogin?service=youtube&continue=https%3A%2F%2Fmusic.youtube.com%2F');return;}return browserLogin.start();});
   for(const event of ['will-navigate','will-redirect'])music.webContents.on(event,(e,url)=>{if(!smoke&&new URL(url).hostname==='accounts.google.com'){e.preventDefault();browserLogin.start().catch(error=>send('app:login-state',error.message));}});
   handle('app:retry', async () => { selectedTab = 'music'; layout(); send('app:mode',mode);await music.webContents.loadURL(home()); });
   ipcMain.on('player:cast',event=>{if(event.sender!==music.webContents||event.senderFrame!==music.webContents.mainFrame)return;selectedTab='settings';layout();send('app:cast',{});window.webContents.focus();});
@@ -272,7 +279,8 @@ app.whenReady().then(async () => {
       await music.webContents.executeJavaScript(`document.documentElement.style.setProperty('--jamstorm-ambient',${JSON.stringify(color.join(' '))})`);
     }catch{}finally{ambientBusy=false;}
   },2500);
-  window.on('closed',()=>{clearInterval(ambientTimer);musicMetadata.close();recovery.close();});
+  const accountTimer=setInterval(()=>{if(mode==='tv')accounts.refresh('tv').catch(()=>{});},10000);
+  window.on('closed',()=>{if(appearanceView&&!appearanceView.webContents.isDestroyed())appearanceView.webContents.close({waitForBeforeUnload:false});clearInterval(accountTimer);clearInterval(ambientTimer);musicMetadata.close();recovery.close();});
   window.on('resize', layout); window.on('closed', () => { tunnel.stop(); room.stop(); jam.disconnect(); if(!music.webContents.isDestroyed())music.webContents.close({waitForBeforeUnload:false}); window = null; });
   await window.loadFile(path.join(__dirname, 'ui/index.html')); layout();send('app:mode',mode);
   if (smoke) {

@@ -56,11 +56,17 @@
     }
   }
   if(location.hostname==='music.youtube.com'){
-    const explicit=row=>/MUSIC_EXPLICIT_BADGE|EXPLICIT/.test(JSON.stringify(row?.badges||[]));
+    const explicit=row=>!!row&&(row.isExplicit===true||row.explicit===true||/MUSIC_EXPLICIT_BADGE|"EXPLICIT"/.test(JSON.stringify([row.badges,row.inlineBadges])));
+    const explicitNode=node=>{
+      const data=node.data||node.__data?.data||{};
+      if([data,data.musicResponsiveListItemRenderer,data.musicTwoRowItemRenderer,data.playlistPanelVideoRenderer,data.musicMultiRowListItemRenderer].some(explicit))return true;
+      return [...node.querySelectorAll('ytmusic-inline-badge-renderer,ytmusic-badge-renderer,badge-shape,yt-icon[icon]')].some(badge=>explicit(badge.data)||/EXPLICIT/i.test(badge.data?.icon?.iconType||badge.icon||badge.getAttribute('icon')||'')||/^explicit$/i.test(badge.getAttribute('aria-label')||'')||badge.textContent.trim()==='E');
+    };
     const filter=()=>{
       const enabled=document.documentElement?.dataset.jamstormExplicit==='block';
-      for(const node of document.querySelectorAll('ytmusic-responsive-list-item-renderer,ytmusic-playlist-panel-video-renderer')){
-        const blocked=enabled&&explicit(node.data);if(blocked){node.dataset.jamExplicitHidden='true';node.style.display='none';}else if(node.dataset.jamExplicitHidden){delete node.dataset.jamExplicitHidden;node.style.removeProperty('display');}
+      const hide=enabled&&document.documentElement?.dataset.jamstormHideExplicit!=='show';
+      for(const node of document.querySelectorAll('ytmusic-responsive-list-item-renderer,ytmusic-playlist-panel-video-renderer,ytmusic-two-row-item-renderer,ytmusic-multi-row-list-item-renderer')){
+        const blocked=hide&&explicitNode(node);if(blocked){node.dataset.jamExplicitHidden='true';}else if(node.dataset.jamExplicitHidden){delete node.dataset.jamExplicitHidden;}
       }
       if(!enabled)return;
       const el=document.querySelector('#queue'),items=el?.queue?.getItems?.();if(!Array.isArray(items))return;
