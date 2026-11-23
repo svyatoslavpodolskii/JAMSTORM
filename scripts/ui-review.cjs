@@ -16,6 +16,7 @@ handle('app:feedback',kind=>{const feedback=state.queue.feedback;if(feedback&&['
 let videoSettings={enabled:false,followCatalog:true,ambient:true,intensity:75,size:76};handle('app:video',value=>videoSettings={...videoSettings,...value});handle('app:video-layout',value=>({visible:!!value.active}));
 handle('app:navigation',()=>({back:true,forward:false}));handle('app:navigate',()=>({back:false,forward:true}));
 handle('app:appearance',()=>{});
+handle('app:receiver',()=>({open:true}));
 handle('app:appearance-snapshot',()=>{});
 handle('app:frame',()=>({overlay:true}));
 handle('app:presentation',value=>value);handle('app:window',()=>({maximized:false}));
@@ -50,7 +51,7 @@ app.whenReady().then(async()=>{
   const results=[];for(const mode of ['lava','corona']){
    await win.webContents.executeJavaScript(`document.querySelector('#appearance-visualizer').value=${JSON.stringify(mode)};document.querySelector('#appearance-visualizer').dispatchEvent(new Event('input'))`);
    for(let i=0;i<24;i++){win.webContents.send('app:spectrum',Array.from({length:48},(_,n)=>.15+Math.sin(n/5+i/6)**2*.7));await new Promise(r=>setTimeout(r,80));}
-   const pixels=await win.webContents.executeJavaScript(`(()=>{const c=document.querySelector('.immersion-background'),data=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let count=0,total=0;for(let i=3;i<data.length;i+=64){total++;if(data[i]>10)count++;}return {mode:document.body.dataset.visualizer,coverage:count/total,width:c.width,height:c.height};})()`);results.push(pixels);if(pixels.coverage<.25)throw Error('Ambient does not fill the screen: '+JSON.stringify(pixels));await shot(win,mode+'-full-ambient');
+   const pixels=await win.webContents.executeJavaScript(`(()=>{const fluid=window.fluidLight?.sample();if(fluid)return {mode:document.body.dataset.visualizer,renderer:'webgl',...fluid};const c=document.querySelector('.immersion-background'),data=c.getContext('2d').getImageData(0,0,c.width,c.height).data;let count=0,total=0;for(let i=3;i<data.length;i+=64){total++;if(data[i]>10)count++;}return {mode:document.body.dataset.visualizer,coverage:count/total,width:c.width,height:c.height};})()`);results.push(pixels);if(pixels.coverage<.25)throw Error('Ambient does not fill the screen: '+JSON.stringify(pixels));await shot(win,mode+'-full-ambient');
   }
   console.log('AMBIENT_REVIEW_OK',JSON.stringify(results));app.exit(0);return;
  }
@@ -204,6 +205,7 @@ app.whenReady().then(async()=>{
  await new Promise(resolve=>setTimeout(resolve,150));
  const tvLyrics=await win.webContents.executeJavaScript(`({lines:document.querySelectorAll('.lyric-line').length,disabled:document.querySelector('#overlay-lyrics').disabled})`);if(tvLyrics.lines!==14||tvLyrics.disabled)throw Error('TV lyrics are unavailable '+JSON.stringify(tvLyrics));
  win.setSize(2560,1080);await win.webContents.executeJavaScript(`window.listening.mode('music');window.listening.panels({lyrics:'hidden',queue:'hidden'},false);document.querySelector('#appearance-visualizer').value='corona';document.querySelector('#appearance-visualizer').dispatchEvent(new Event('input'));document.body.classList.remove('playback-paused')`);win.webContents.send('app:spectrum',Array.from({length:48},(_,i)=>.15+Math.sin(i/5)**2*.65));await shot(win,'rays-ultrawide');await win.webContents.executeJavaScript(`document.querySelector('#appearance-visualizer').value='lava';document.querySelector('#appearance-visualizer').dispatchEvent(new Event('input'))`);win.webContents.send('app:spectrum',Array.from({length:48},(_,i)=>.2+Math.sin(i/6)**2*.65));await shot(win,'lava-ultrawide');
+ await new Promise(r=>setTimeout(r,600));const progressBefore=await win.webContents.executeJavaScript(`Number(document.getElementById('dock-seek').value)`);await win.webContents.executeJavaScript(`render({...state})`);await new Promise(r=>setTimeout(r,100));const progressAfter=await win.webContents.executeJavaScript(`Number(document.getElementById('dock-seek').value)`);if(progressAfter<progressBefore-.1)throw Error('Unchanged state moves progress backward '+JSON.stringify({progressBefore,progressAfter}));
  state.queue.feedback={like:{available:true,pressed:false},dislike:{available:true,pressed:false}};
  await win.webContents.executeJavaScript(`render(${JSON.stringify(state)});document.getElementById('feedback-like').click()`);await new Promise(r=>setTimeout(r,120));
  if(!await win.webContents.executeJavaScript(`document.getElementById('feedback-like').getAttribute('aria-pressed')==='true'`))throw Error('Like did not reflect native response');

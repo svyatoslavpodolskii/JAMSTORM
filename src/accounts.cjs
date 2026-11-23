@@ -12,6 +12,7 @@ class Accounts{
  }
 }
 const musicScript=`(()=>{const value=window.ytcfg?.get?.('LOGGED_IN');return typeof value==='boolean'?value:null;})()`;
-const tvScript=`(()=>{const guide=document.querySelector('ytlr-guide-response');if(!guide)return null;const value=window.ytcfg?.get?.('LOGGED_IN');const entries=[...guide.querySelectorAll('ytlr-guide-entry-renderer,ytlr-button')];const guest=entries.some(e=>e.data?.navigationEndpoint?.signInEndpoint||e.data?.command?.signInEndpoint||/^(Sign in|Войти)$/i.test(e.getAttribute('aria-label')||''));if(guest)return false;return typeof value==='boolean'?value:null;})()`;
+const tvScript=`(()=>{const value=window.ytcfg?.get?.('LOGGED_IN');if(value===true)return true;const guide=document.querySelector('ytlr-guide-response');if(!guide)return value===false?false:null;const entries=[...guide.querySelectorAll('ytlr-guide-entry-renderer,ytlr-button')];const guest=entries.some(e=>e.getBoundingClientRect().height>0&&getComputedStyle(e).visibility!=='hidden'&&(e.data?.navigationEndpoint?.signInEndpoint||e.data?.command?.signInEndpoint));if(guest)return false;return typeof value==='boolean'?value:null;})()`;
+
 const tvLoginScript=`new Promise(resolve=>{let tries=0;const open=()=>{const instance=Object.values(window._yttv||{}).find(v=>v?.instance?.resolveCommand)?.instance;if(instance){instance.resolveCommand({clientActionEndpoint:{action:{actionType:'OPEN_SIGN_IN_PROMPT'}}});return resolve(true);}if(++tries>100)return resolve(false);setTimeout(open,100);};open();})`;
 module.exports={Accounts,musicScript,tvScript,tvLoginScript};

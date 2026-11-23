@@ -196,3 +196,16 @@ body.video-view-active .immersion-canvas{display:none}
 .account-details{padding:0 0 12px;color:var(--text)}
 .account-details>summary{cursor:pointer;font-size:12px;color:var(--muted);padding:8px 0 14px}
 .account-details .setting-row{padding-block:14px}
+/* Keep the transport balanced around its two rows, including the seek hit area. */
+.playback-dock{padding-block:12px}
+.dock-main{gap:2px;justify-content:center}
+.dock-timeline{gap:9px;min-height:22px;line-height:1}
+.dock-timeline span{min-width:32px;flex:none;text-align:center}
+#dock-seek{margin:0;flex:1;min-width:50px}
+.stage-lines{scroll-behavior:auto;overflow-anchor:none}
+.lyrics-pane .lyric-line,.lyrics-pane[data-placement=center] .lyric-line{transform:none;transition:opacity 550ms ease,color 550ms ease}
+.lyrics-pane .lyric-line.is-active,.lyrics-pane[data-placement=center] .lyric-line.is-active{transform:none}
+.fluid-light{inset:-10px;width:calc(100% + 20px);height:calc(100% + 20px);filter:blur(10px);transition:opacity 1200ms ease}
+.receiver-active .playback-dock{display:none!important}
+#receiver-open[aria-pressed=true]{background:#ffffff12;border-radius:12px;color:var(--text)}
+.receiver-active .main-nav .tab.active{background:transparent;border-color:transparent;opacity:.65}

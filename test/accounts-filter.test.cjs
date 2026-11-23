@@ -1,6 +1,9 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
 const {Accounts}=require('../src/accounts.cjs');
+test('TV logged-in status wins over cached hidden sign-in navigation',()=>{
+ const {tvScript}=require('../src/accounts.cjs');let reads=0;const value=vm.runInNewContext(tvScript,{window:{ytcfg:{get:()=>true}},document:{querySelector:()=>{reads++;throw Error('Stale guide');}}});assert.equal(value,true);assert.equal(reads,0);
+});
 test('feedback delegates to native controls and rejects arbitrary actions',()=>{
  const {script}=require('../src/feedback.cjs');let clicks=0;const root={querySelector:()=>({click(){clicks++;},getAttribute:()=>null})};
  for(const action of ['like','dislike','menu'])assert.equal(vm.runInNewContext(script(action),{document:{querySelector:()=>({querySelector:()=>root})}}).available,true);

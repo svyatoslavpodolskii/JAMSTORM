@@ -77,14 +77,18 @@ const accountDetails=document.createElement('details');accountDetails.className=
 $('music-account-switch').onclick=()=>action(async()=>{await call(window.jam.login('music'));});
 function renderAccounts(value){
  const music=value.music==='signed-in',tv=value.tv==='signed-in',primary=$('music-login'),tvButton=$('tv-login');primary.dataset.accountState=value.music||'unknown';tvButton.dataset.accountState=value.tv||'unknown';
- primary.textContent=music&&tv?'Подключено':music?'Подключить TV':'Войти';primary.disabled=music&&tv;
- accountRow.querySelector('small').textContent=music?(tv?'Music и TV подключены':'Music подключён · осталось подключить TV'):'Один сценарий подключения Music и TV';
- tvButton.textContent=tv?'Открыть TV':'Подключить TV';$('tv-account-status').textContent=tv?'Вход выполнен':'Google подтвердит подключение по коду';
+ primary.textContent=music?'Вход выполнен':'Войти';primary.disabled=music;
+ accountRow.querySelector('small').textContent=music?'YouTube Music подключён':'Вход в YouTube Music через браузер';
+ tvButton.textContent=value.tv==='signed-out'?'Войти в TV':'Открыть TV';$('tv-account-status').textContent=tv?'Вход выполнен':value.tv==='signed-out'?'Google подтвердит подключение по коду':'Статус проверится при открытии TV';
 }
 async function refreshAccounts(){try{renderAccounts(await call(window.jam.accounts()));}catch{}}
 window.jam.onAccounts(renderAccounts);call(window.jam.accounts(false)).then(renderAccounts).catch(()=>{});
 window.jam.onLogin(text=>{if(text.startsWith('Вход завершён'))refreshAccounts();});
-$('tv-login').onclick=()=>action(async()=>{await call(window.jam.login('tv'));await tab('catalog');});
+$('tv-login').onclick=()=>action(async()=>{await call(window.jam.login('tv'));});
+const receiverButton=document.createElement('button');receiverButton.id='receiver-open';receiverButton.className='toolbar-icon';receiverButton.title='Трансляция с телефона';receiverButton.setAttribute('aria-label',receiverButton.title);receiverButton.innerHTML='<svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 8V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M3 13a8 8 0 0 1 8 8M3 17a4 4 0 0 1 4 4M3 21h.01"/></svg>';receiverButton.onclick=()=>action(()=>call(window.jam.receiver('open')));document.querySelector('.topbar').insertBefore(receiverButton,document.getElementById('appearance-toggle'));
+const modeRow=$('player-mode').closest('.setting-row');modeRow.hidden=true;const castRow=document.createElement('div');castRow.className='setting-row';castRow.innerHTML='<span><strong>Трансляция с телефона</strong><small>Отдельное окно TV. В нём открой «Настройки → С помощью кода» и подключи телефон.</small></span><button class="secondary">Открыть</button>';castRow.querySelector('button').onclick=receiverButton.onclick;modeRow.after(castRow);
+castRow.querySelector('small').textContent='Открой TV внутри JAMSTORM, затем «Настройки → С помощью кода» и подключи телефон.';
+window.jam.onReceiver(visible=>{document.body.classList.toggle('receiver-active',visible);receiverButton.setAttribute('aria-pressed',String(visible));});
 const feedbackGroup=document.createElement('div');feedbackGroup.className='panel-switches track-feedback';feedbackGroup.setAttribute('aria-label','Оценка трека');
 for(const [kind,label,path] of [['like','Нравится','M7 10v11H3V10zm0 0 5-8 2 1v6h5a2 2 0 0 1 2 2l-2 8a3 3 0 0 1-3 2H7'],['dislike','Не нравится','M7 14V3H3v11zm0 0 5 8 2-1v-6h5a2 2 0 0 0 2-2l-2-8a3 3 0 0 0-3-2H7'],['menu','Меню трека','M5 12h.01M12 12h.01M19 12h.01']]){
  const button=document.createElement('button');button.id='feedback-'+kind;button.title=label;button.setAttribute('aria-label',label);button.innerHTML='<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="'+path+'"/></svg>';button.onclick=()=>action(async()=>{const result=await call(window.jam.feedback(kind));if(result?.page)await tab(result.page);if(result?.feedback){state={...state,queue:{...state.queue,feedback:result.feedback}};renderFeedback(result.feedback);}if(result?.message)message(result.message);});feedbackGroup.append(button);

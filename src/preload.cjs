@@ -1,5 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('jam', {
+  receiver:action=>ipcRenderer.invoke('app:receiver',action),
+  onReceiver:callback=>ipcRenderer.on('app:receiver-state',(_event,value)=>callback(value)),
   navigate:action=>ipcRenderer.invoke('app:navigate',action),navigation:()=>ipcRenderer.invoke('app:navigation'),onNavigation:callback=>ipcRenderer.on('app:navigation',(_e,value)=>callback(value)),
   policy:value=>ipcRenderer.invoke('app:policy',value),openBrowser:()=>ipcRenderer.invoke('app:open-browser'),onCast:callback=>ipcRenderer.on('app:cast',callback),
   search:query=>ipcRenderer.invoke('app:search',query),playTrack:id=>ipcRenderer.invoke('app:play-track',id),
