@@ -1,7 +1,7 @@
 'use strict';
 (()=>{
  const canvas=document.createElement('canvas');canvas.className='immersion-canvas immersion-background fluid-light';canvas.setAttribute('aria-hidden','true');canvas.hidden=true;document.body.append(canvas);
- let gl,program,failed=false;
+ let gl,program,failed=false,lastTime=0,flowTime=0;
  const fragment=`precision highp float;
  uniform vec2 size,origin;uniform float time,energy,style;uniform vec3 c0,c1,c2;
  float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
@@ -32,10 +32,11 @@
    canvas.addEventListener('webglcontextlost',event=>{event.preventDefault();failed=true;gl=null;canvas.hidden=true;});return true;
   }catch{failed=true;gl=null;canvas.hidden=true;return false;}
  }
- function render({width,height,time,energy,colors,mode,origin=[.5,.5]}){
+ function render({width,height,time,energy,colors,mode,origin=[.5,.5],motion=1}){
   if(!init())return false;canvas.hidden=false;canvas.style.opacity='1';const h=216,w=Math.round(h*width/height);if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;gl.viewport(0,0,w,h);}
   gl.uniform2f(gl.getUniformLocation(program,'origin'),...origin);
-  gl.useProgram(program);gl.uniform2f(gl.getUniformLocation(program,'size'),w,h);gl.uniform1f(gl.getUniformLocation(program,'time'),time/1000);gl.uniform1f(gl.getUniformLocation(program,'energy'),energy);gl.uniform1f(gl.getUniformLocation(program,'style'),mode==='corona'?1:0);
+  flowTime+=lastTime?Math.min(.1,Math.max(0,(time-lastTime)/1000))*Math.max(0,Math.min(1,motion)):0;lastTime=time;
+  gl.useProgram(program);gl.uniform2f(gl.getUniformLocation(program,'size'),w,h);gl.uniform1f(gl.getUniformLocation(program,'time'),flowTime);gl.uniform1f(gl.getUniformLocation(program,'energy'),energy);gl.uniform1f(gl.getUniformLocation(program,'style'),mode==='corona'?1:0);
   colors.forEach((color,i)=>{const values=color.split(',').map(v=>Number(v)/255);gl.uniform3f(gl.getUniformLocation(program,'c'+i),...values);});gl.drawArrays(gl.TRIANGLES,0,6);return true;
  }
  function sample(){if(!gl||failed)return null;const data=new Uint8Array(canvas.width*canvas.height*4);gl.readPixels(0,0,canvas.width,canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,data);let count=0,total=0,hash=0;for(let i=3;i<data.length;i+=64){total++;if(data[i]>10)count++;hash=(hash*31+data[i-3]+data[i])>>>0;}return {coverage:count/total,width:canvas.width,height:canvas.height,hash};}

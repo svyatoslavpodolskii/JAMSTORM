@@ -17,13 +17,13 @@
     node.onerror=()=>{if(node.src.includes('maxresdefault'))node.src='https://i.ytimg.com/vi/'+item.videoId+'/hqdefault.jpg';else{node.onerror=null;node.src='cover-placeholder.svg';}};
   }
   function updatePage(){
-    const surface=window.surfaceLayout(page,mode);stage.hidden=!surface.sceneVisible;dock.hidden=!surface.dockVisible||!current()||['settings','invite'].includes(page);
+    const surface=window.surfaceLayout(page,mode),receiverActive=document.body.classList.contains('receiver-active');stage.hidden=!surface.sceneVisible||receiverActive;dock.hidden=!surface.dockVisible||!current()||receiverActive||['settings','invite'].includes(page);
     document.body.classList.toggle('has-dock',!dock.hidden);
     el('catalog-tab').textContent=mode==='tv'?'Music TV':'Каталог';
     document.body.classList.toggle('remote-view',surface.remoteVisible);document.body.classList.toggle('catalog-view',page==='catalog');
 
     for(const key of ['lyrics','queue'])el('overlay-'+key).disabled=page!=='music'||key==='lyrics'&&lyricAvailable===false;
-    document.body.classList.toggle('listening-view',page==='music');window.playerEffects.visibility?.(page==='music'&&!document.hidden);wakeClock();
+    document.body.classList.toggle('listening-view',page==='music');window.playerEffects.visibility?.(page==='music'&&!document.hidden&&!document.body.classList.contains('receiver-active'));wakeClock();
   }
   let transition;
   function setPanels(value,animate=true){
@@ -133,5 +133,5 @@
   new ResizeObserver(()=>{if(panels.lyrics!=='hidden'){highlight=-2;requestAnimationFrame(tick);}}).observe(stage);
   window.jam.onPanel(value=>{peekState=null;setPanels(value);});call(window.jam.panels()).then(value=>setPanels(value,false)).catch(fail);
   setTimeout(()=>{document.body.classList.remove('booting','intro-running');el('boot-screen').classList.add('finished');setTimeout(()=>el('boot-screen').hidden=true,500);},reduced?0:1550);
-  window.listening={render,drag:wireDrag,search:openSearch,page:value=>{page=value;updatePage();},mode:value=>{mode=value;updatePage();},panels:setPanels};updatePage();function wakeClock(){if(!clockFrame&&!document.hidden&&page==='music'&&clock.playing)clockFrame=requestAnimationFrame(animateClock);}function animateClock(){clockFrame=0;if(!document.hidden&&page==='music'){tick();wakeClock();}}document.addEventListener('visibilitychange',()=>{window.playerEffects.visibility?.(page==='music'&&!document.hidden);wakeClock();});wakeClock();
+  window.listening={render,progress:()=>clock.duration?Math.min(1,((clock.position||0)+(clock.playing?Math.min(1800,performance.now()-received):0))/clock.duration):0,drag:wireDrag,search:openSearch,page:value=>{page=value;updatePage();},mode:value=>{mode=value;updatePage();},panels:setPanels};updatePage();function wakeClock(){if(!clockFrame&&!document.hidden&&page==='music'&&!document.body.classList.contains('receiver-active')&&clock.playing)clockFrame=requestAnimationFrame(animateClock);}function animateClock(){clockFrame=0;if(!document.hidden&&page==='music'&&!document.body.classList.contains('receiver-active')){tick();wakeClock();}}document.addEventListener('visibilitychange',()=>{window.playerEffects.visibility?.(page==='music'&&!document.hidden&&!document.body.classList.contains('receiver-active'));wakeClock();});wakeClock();
 })();

@@ -16,8 +16,8 @@
  function wake(){if(!frame&&!document.hidden)frame=requestAnimationFrame(draw);}
  function receive(values){
   if(!Array.isArray(values)||values.length!==48)return;targetSpectrum=values;targetLevel=Math.sqrt(values.reduce((n,v)=>n+v*v,0)/48);lastSound=performance.now();
-  if(!body.classList.contains('playback-paused')&&targetLevel>.002){const position=Number($('dock-seek').value)/1000,index=Math.min(399,Math.floor(position*400));history[index]=Math.max(history[index]||0,targetLevel);}
-  wake();
+  if(!body.classList.contains('playback-paused')&&targetLevel>.002){const position=window.listening?.progress?.()??Number($('dock-seek').value)/1000,index=Math.min(399,Math.floor(position*400));history[index]=Math.max(history[index]||0,targetLevel);}
+  if(body.classList.contains('listening-view')&&!body.classList.contains('receiver-active'))wake();
  }
  window.jam.onSpectrum(receive);
  window.addEventListener('artwork-change',()=>{history=Array(400).fill(null);particles=[];wake();});
@@ -38,8 +38,8 @@
   }
  });
  function draw(now){
-  const ink=body.dataset.theme==='light'?'45,65,85':'224,235,246';frame=0;if(now-last<30){wake();return;}last=now;ctx=overlayCtx;ctx.clearRect(0,0,w,h);backgroundCtx.clearRect(0,0,w,h);const playing=!body.classList.contains('playback-paused'),mode=body.dataset.visualizer||'trail',visible=body.classList.contains('listening-view'),active=visible&&playing&&now-lastSound<1200&&!reduced.matches;
-  if(!active||!['lava','corona'].includes(mode))window.fluidLight?.hide();level+=(active?targetLevel-level:-level)*.12;for(let i=0;i<48;i++)spectrum[i]+=((active?targetSpectrum[i]:0)-spectrum[i])*.12;
+  const ink=body.dataset.theme==='light'?'45,65,85':'224,235,246';frame=0;if(now-last<30){wake();return;}last=now;ctx=overlayCtx;ctx.clearRect(0,0,w,h);backgroundCtx.clearRect(0,0,w,h);const playing=!body.classList.contains('playback-paused'),mode=body.dataset.visualizer||'trail',visible=body.classList.contains('listening-view')&&!body.classList.contains('receiver-active'),audioActive=visible&&playing&&now-lastSound<1200&&!reduced.matches,active=audioActive||visible&&playing&&!reduced.matches&&['lava','corona'].includes(mode);
+  if(!active||!['lava','corona'].includes(mode))window.fluidLight?.hide();level+=(audioActive?targetLevel-level:-level)*.12;for(let i=0;i<48;i++)spectrum[i]+=((audioActive?targetSpectrum[i]:0)-spectrum[i])*.12;
   if(visible&&mode!=='none'){
    const seek=$('dock-seek'),r=seek.getBoundingClientRect(),progress=Number(seek.value)/1000;ctx.strokeStyle=`rgba(${ink},.55)`;ctx.fillStyle=`rgba(${ink},.5)`;ctx.lineWidth=1;
    if(mode==='trail'&&r.width&&!body.classList.contains('dock-collapsed')&&getComputedStyle(dock).opacity!=='0'){
@@ -48,7 +48,7 @@
     const art=$('cover-frame').getBoundingClientRect(),stage=$('listening-stage').getBoundingClientRect(),center=art.width?art.left+art.width/2:w/2;
     if((mode==='corona'||mode==='lava')&&art.width){
      const style=getComputedStyle(body),colors=['--ambient','--ambient-secondary','--ambient-third'].map(key=>style.getPropertyValue(key).trim().replaceAll(' ',',')),cy=art.top+art.height/2,pane=document.querySelector('.artwork-pane').getBoundingClientRect(),copy=document.querySelector('.hero-copy').getBoundingClientRect();
-     if(!window.fluidLight?.render({width:w,height:h,time:now,energy:level,colors,mode,origin:[center/w,1-cy/h]})){
+     if(!window.fluidLight?.render({width:w,height:h,time:now,energy:level,colors,mode,origin:[center/w,1-cy/h],motion:Number(style.getPropertyValue('--motion-amount'))||0})){
      ctx=backgroundCtx;ctx.save();ctx.beginPath();ctx.rect(0,0,w,h);ctx.clip();ctx.globalCompositeOperation='screen';
      if(mode==='lava'){
       ctx.globalCompositeOperation='source-over';for(let i=0;i<4;i++){const value=spectrum[(i*9)%48],phase=now/9000+i*1.8,x=w*(.2+i*.2)+Math.sin(phase)*w*.14,y=h*(.45+Math.cos(phase*.73)*.24),radius=Math.max(w*.34,h*.65)*(1+value*.25),color=colors[i%3]||'180,200,230',gradient=ctx.createRadialGradient(x,y,0,x,y,radius);gradient.addColorStop(0,`rgba(${color},${.2+value*.22})`);gradient.addColorStop(.38,`rgba(${color},${.14+value*.1})`);gradient.addColorStop(1,`rgba(${color},0)`);ctx.fillStyle=gradient;ctx.fillRect(0,0,w,h);}

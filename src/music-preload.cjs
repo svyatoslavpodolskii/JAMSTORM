@@ -44,6 +44,7 @@ async function startAnalysis(video){
 setInterval(()=>{
  if(!visualsEnabled)return;
  const video=document.querySelector('video');if(!video||!video.isConnected){stopAnalysis();return;}if(analysis?.video!==video&&analysis)stopAnalysis();
+ if(video.paused){if(analysis||pendingAnalysis){ipcRenderer.send('player:level',0);ipcRenderer.send('player:spectrum',Array(48).fill(0));stopAnalysis();}return;}
  if(!analysis){startAnalysis(video);return;}
  let level=0;
  if(!video.paused){analysis.analyser.getByteFrequencyData(analysis.samples);level=Math.min(1,Math.sqrt(analysis.samples.slice(1,48).reduce((sum,value)=>sum+value*value,0)/47)/180);}

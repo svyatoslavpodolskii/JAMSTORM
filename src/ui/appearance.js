@@ -14,6 +14,7 @@
   root.dataset.background=prefs.background;
   for(const key of ['layout','palette','lyrics','visualizer','dock'])root.dataset[key]=prefs[key];
   root.style.setProperty('--motion-duration',(40-prefs.motion*.28)+'s');root.classList.toggle('still-background',prefs.motion===0);
+  root.style.setProperty('--motion-amount',String(prefs.motion/100));
   root.style.setProperty('--window-opacity',String(root.classList.contains('glass')&&!reduceGlass.matches&&prefs.material!=='none'?1-prefs.opacity/100:1));
   root.dataset.translucent=String(root.classList.contains('glass')&&!reduceGlass.matches&&prefs.material!=='none'&&prefs.opacity>0);
   document.getElementById('appearance-opacity').disabled=!root.classList.contains('glass')||prefs.material==='none'||reduceGlass.matches;

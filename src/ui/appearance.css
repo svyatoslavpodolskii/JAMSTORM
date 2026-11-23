@@ -209,3 +209,5 @@ body.video-view-active .immersion-canvas{display:none}
 .receiver-active .playback-dock{display:none!important}
 #receiver-open[aria-pressed=true]{background:#ffffff12;border-radius:12px;color:var(--text)}
 .receiver-active .main-nav .tab.active{background:transparent;border-color:transparent;opacity:.65}
+.receiver-active .ambient-color,.receiver-active .floating-artwork,.receiver-active .ambient-light::before,.receiver-active .ambient-light::after{animation-play-state:paused!important}
+body:not(.listening-view) .immersion-canvas,body.receiver-active .immersion-canvas{display:none!important}
