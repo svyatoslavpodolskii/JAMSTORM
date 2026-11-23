@@ -25,6 +25,8 @@ if(selfContained&&!smoke){
 if (smoke){app.setPath('userData',backgroundReview?path.join(app.isPackaged?app.getPath('temp'):path.join(__dirname,'../artifacts'),'background-review-'+process.pid):path.join(app.getPath('temp'),'jam-desktop-smoke'));for(const name of ['logs','crashDumps']){const folder=path.join(app.getPath('userData'),name);fs.mkdirSync(folder,{recursive:true});app.setPath(name,folder);}}
 if (smoke && !liveSmoke||process.argv.includes('--catalog-review')&&!process.argv.includes('--hardware-review')||backgroundReview&&process.argv.includes('--software-rendering')) app.disableHardwareAcceleration();
 require('electron').crashReporter.start({uploadToServer:false});
+let loginStore,quitting=false;
+if(!smoke&&!process.argv.includes('--installation-check')){if(!app.requestSingleInstanceLock())app.exit(0);app.on('second-instance',()=>{if(window&&!window.isDestroyed()){if(window.isMinimized())window.restore();window.show();window.focus();}});}
 let receiver,policy,appearanceView,videoSettings=require('./video-view.cjs').normalize(),videoBounds=null,videoSceneKey='',videoCssReady=false;
 let window, music, player, jam, room, tunnel, addons, appearanceOpen=false, panel={queue:'hidden',lyrics:'hidden'}, selectedTab = 'music', mode = 'music';
 const nativeMaterialSupported=process.platform==='win32'&&Number(require('node:os').release().split('.')[2])>=22621;
@@ -89,6 +91,7 @@ app.whenReady().then(async () => {
   window.webContents.on('will-navigate', (e, url) => { if (!isLocalPage(url)) e.preventDefault(); });
   window.webContents.session.setPermissionRequestHandler((_wc, _p, cb) => cb(false));
   const musicSession = session.fromPartition(smoke ? 'jam-smoke' : 'persist:youtube-music');
+  if(!smoke){loginStore=new (require('./login-store.cjs').LoginStore)(musicSession,path.join(app.getPath('userData'),'login-session.bin'),require('electron').safeStorage);await loginStore.start();}
   musicSession.setPermissionRequestHandler((_wc, _p, cb) => cb(false)); musicSession.setPermissionCheckHandler(() => false);
   musicSession.webRequest.onHeadersReceived((details, callback) => {
     const url = new URL(details.url);
@@ -492,4 +495,4 @@ app.whenReady().then(async () => {
   } else music.webContents.loadURL(home()).catch(() => {});
 }).catch(error => { console.error('APP_START_FAILED', error.message); finishSmoke(1); });
 app.on('window-all-closed', () => app.quit());
-app.on('before-quit', () => { receiver?.close(); addons?.stop(); tunnel?.stop(); room?.stop(); jam?.disconnect(); });
+app.on('before-quit', event => { if(loginStore&&!quitting){event.preventDefault();quitting=true;loginStore.close().catch(()=>{}).finally(()=>app.quit());return;}receiver?.close(); addons?.stop(); tunnel?.stop(); room?.stop(); jam?.disconnect(); });
